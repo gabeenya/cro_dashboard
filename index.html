@@ -128,8 +128,8 @@
         </div>
         <div class="kpi-bottom">
           <span class="kpi-bottom-label">위반율</span>
-          <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-위험" id="k-acc-bar" style="width:0%"></div></div>
-          <span class="kpi-rate-val" id="k-acc-rate" style="color:var(--위험-c)">—%</span>
+          <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-soft" id="k-acc-bar" style="width:0%"></div></div>
+          <span class="kpi-rate-val" id="k-acc-rate" style="color:var(--soft)">—%</span>
         </div>
       </div>
       <!-- 당월 -->
@@ -150,8 +150,8 @@
         </div>
         <div class="kpi-bottom">
           <span class="kpi-bottom-label">위반율</span>
-          <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-위험" id="k-mon-bar" style="width:0%"></div></div>
-          <span class="kpi-rate-val" id="k-mon-rate" style="color:var(--위험-c)">—%</span>
+          <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-soft" id="k-mon-bar" style="width:0%"></div></div>
+          <span class="kpi-rate-val" id="k-mon-rate" style="color:var(--soft)">—%</span>
         </div>
       </div>
       <!-- 현재 -->
@@ -168,8 +168,8 @@
         </div>
         <div class="kpi-bottom">
           <span class="kpi-bottom-label">처리완료율</span>
-          <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-green" id="k-cur-bar" style="width:0%"></div></div>
-          <span class="kpi-rate-val" id="k-cur-rate" style="color:#059669">—%</span>
+          <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-soft" id="k-cur-bar" style="width:0%"></div></div>
+          <span class="kpi-rate-val" id="k-cur-rate" style="color:var(--soft)">—%</span>
         </div>
       </div>
     </div>
@@ -262,16 +262,22 @@
       <div class="card" style="margin-bottom:0">
         <div class="card-hd">
           <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">계열사별 현황</span></div>
-          <span class="card-hint">셀 클릭 → 목록 이동</span>
+          <span class="card-hint">카드 클릭 → 계열사뷰로 이동</span>
         </div>
-        <div class="card-bd" style="padding:0">
-          <div class="mx-wrap"><table class="mx"><thead id="mx-head"></thead><tbody id="mx-body"></tbody></table></div>
-        </div>
+        <div class="card-bd"><div class="brand-grid" id="div-card-grid"></div></div>
       </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-hd">
           <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">위험도별 분류</span></div>
-          <span class="card-hint" id="high-cnt"></span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="high-grade-filter" onchange="renderHighMain(getFiltered())" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
+              <option value="">전체</option>
+              <option value="위험">위험</option>
+              <option value="주의">주의</option>
+              <option value="안전">안전</option>
+            </select>
+            <span class="card-hint" id="high-cnt"></span>
+          </div>
         </div>
         <div class="ticker-wrap" id="high-ticker-main">
           <table class="tbl" style="min-width:340px">
@@ -294,9 +300,17 @@
       <div class="card" style="margin-bottom:0">
         <div class="card-hd">
           <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">위험도별 분류</span></div>
-          <span class="card-hint" id="high-cnt2"></span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="high-grade-filter-div" onchange="renderHighDiv(getFiltered())" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
+              <option value="">전체</option>
+              <option value="위험">위험</option>
+              <option value="주의">주의</option>
+              <option value="안전">안전</option>
+            </select>
+            <span class="card-hint" id="high-cnt2"></span>
+          </div>
         </div>
-        <div style="overflow-x:auto">
+        <div class="ticker-wrap" id="high-ticker-div">
           <table class="tbl" style="min-width:340px">
             <thead><tr><th>등록일</th><th>브랜드/조직</th><th>리스크명</th><th>등급</th></tr></thead>
             <tbody id="high-body-div"></tbody>
@@ -405,7 +419,7 @@
         <span class="card-hint" id="mock-status">note 시작이 [MOCK]인 데이터만 다룸</span>
       </div>
       <div class="card-bd" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-red" id="mock-gen-btn" onclick="generateMockData()">1,254건 생성</button>
+        <button class="btn btn-red" id="mock-gen-btn" onclick="generateMockData()">987건 생성</button>
         <button class="btn" id="mock-del-btn" onclick="deleteMockData()">Mock 데이터 모두 삭제</button>
         <span style="font-size:11px;color:var(--text2);margin-left:4px">계열사 · 브랜드 · 대분류 · 등록일 · 상태가 골고루 분포되도록 생성</span>
       </div>

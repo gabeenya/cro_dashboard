@@ -9,7 +9,7 @@ let activeDiv='', editId=null;
 let tChart=null, dChart=null;
 let lPage=1; const PER=20;
 let rptFmt='ppt';
-const CAT_COLORS=['#1a2744','#c8102e','#d97706','#059669','#7c3aed','#0284c7','#db2777','#64748b'];
+const CAT_COLORS=['#7a9bc1','#d99893','#d9b683','#94c4a5','#b3a4cc','#92b8d1','#c997b5','#a8aeba'];
 
 // ── 초기화 ─────────────────────────────────
 async function init(){
@@ -91,18 +91,22 @@ function computeGrade(r,all){
     const d=x.registered_at?new Date(x.registered_at):null;
     return d&&d>=ago30;
   }).length;
-  // (c) 대분류별 전월 대비 증가율
-  const catId=r.risk_categories?.id;
-  const y=now.getFullYear(), m=now.getMonth();
-  const prev=new Date(y,m-1,1);
-  const cntInMonth=(yr,mo)=>all.filter(x=>{
-    if(x.risk_categories?.id!==catId||!x.registered_at) return false;
-    const d=new Date(x.registered_at);
-    return d.getFullYear()===yr&&d.getMonth()===mo;
-  }).length;
-  const thisCnt=cntInMonth(y,m);
-  const prevCnt=cntInMonth(prev.getFullYear(),prev.getMonth());
-  const growth=prevCnt>0?((thisCnt-prevCnt)/prevCnt)*100:(thisCnt>0?100:0);
+  // (c) 대분류별 전월 대비 증가율 — Mock 데이터는 일제 입력으로 왜곡되므로 skip
+  let growth=0;
+  const isMock=r.note?.startsWith('[MOCK]');
+  if(!isMock){
+    const catId=r.risk_categories?.id;
+    const y=now.getFullYear(), m=now.getMonth();
+    const prev=new Date(y,m-1,1);
+    const cntInMonth=(yr,mo)=>all.filter(x=>{
+      if(x.risk_categories?.id!==catId||!x.registered_at) return false;
+      const d=new Date(x.registered_at);
+      return d.getFullYear()===yr&&d.getMonth()===mo;
+    }).length;
+    const thisCnt=cntInMonth(y,m);
+    const prevCnt=cntInMonth(prev.getFullYear(),prev.getMonth());
+    growth=prevCnt>0?((thisCnt-prevCnt)/prevCnt)*100:(thisCnt>0?100:0);
+  }
 
   if(delayDays>=14||sameRecent>=3||growth>=10) return '위험';
   if(delayDays>=7 ||sameRecent>=2||growth>=5)  return '주의';
@@ -172,7 +176,7 @@ function renderDash(risks){
     // 메인뷰
     document.getElementById('section-main').style.display='';
     document.getElementById('section-div').style.display='none';
-    renderMatrix(risks);
+    renderDivisionCards(risks);
     renderHighMain(risks);
   } else {
     // 계열사뷰
@@ -313,24 +317,30 @@ function renderMatrix(risks){
   }).join('');
 }
 
-// ── 위험도별 분류 (당월 등록) ──────────────
-function inThisMonth(r){
-  if(!r.registered_at) return false;
-  const d=new Date(r.registered_at), now=new Date();
-  return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+// ── 위험도별 분류 ──────────────────────────
+// 정렬: 등록일 내림차순(최근부터). 등급 필터 select로 좁힘.
+function sortByRecent(arr){
+  return [...arr].sort((a,b)=>{
+    const da=a.registered_at?new Date(a.registered_at).getTime():0;
+    const db=b.registered_at?new Date(b.registered_at).getTime():0;
+    if(db!==da) return db-da;
+    // 같은 날이면 created_at으로 tiebreak
+    const ca=a.created_at?new Date(a.created_at).getTime():0;
+    const cb=b.created_at?new Date(b.created_at).getTime():0;
+    return cb-ca;
+  });
 }
-// 등급 우선순위 정렬: 위험 > 주의 > 안전
-const GRADE_RANK={'위험':0,'주의':1,'안전':2};
-function sortByGrade(arr){
-  return [...arr].sort((a,b)=>(GRADE_RANK[a.grade]??9)-(GRADE_RANK[b.grade]??9));
+function applyGradeFilter(arr,selId){
+  const v=document.getElementById(selId)?.value;
+  return v?arr.filter(r=>r.grade===v):arr;
 }
 
 function renderHighMain(risks){
-  const monthly=sortByGrade(risks.filter(inThisMonth));
-  document.getElementById('high-cnt').textContent=`당월 ${monthly.length}건`;
+  const list=sortByRecent(applyGradeFilter(risks,'high-grade-filter'));
+  document.getElementById('high-cnt').textContent=`총 ${list.length}건`;
   const b=document.getElementById('high-body-main');
-  if(!monthly.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">당월 등록 없음</td></tr>';stopHighRotate();return;}
-  b.innerHTML=monthly.map(r=>`
+  if(!list.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';stopHighRotate();return;}
+  b.innerHTML=list.map(r=>`
     <tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
@@ -340,17 +350,18 @@ function renderHighMain(risks){
 }
 
 function renderHighDiv(risks){
-  const monthly=sortByGrade(risks.filter(inThisMonth));
+  const list=sortByRecent(applyGradeFilter(risks,'high-grade-filter-div'));
   const el2=document.getElementById('high-cnt2');
-  if(el2) el2.textContent=`당월 ${monthly.length}건`;
+  if(el2) el2.textContent=`총 ${list.length}건`;
   const b=document.getElementById('high-body-div');
-  if(!monthly.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">당월 등록 없음</td></tr>';return;}
-  b.innerHTML=monthly.map(r=>`
+  if(!list.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';stopHighRotate();return;}
+  b.innerHTML=list.map(r=>`
     <tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.brands?.name||'-'}</td>
       <td>${r.title}</td><td>${gradeBadge(r.grade)}</td>
     </tr>`).join('');
+  startHighRotate('high-ticker-div');
 }
 
 // ── 자동 순환 (메인뷰 위험도별 분류) ───────
@@ -374,6 +385,39 @@ function startHighRotate(wrapId){
     if(pos>=max+30){pos=0;}
     wrap.scrollTop=pos;
   },40);
+}
+
+// ── 계열사 카드 (메인뷰) ──────────────────
+function renderDivisionCards(risks){
+  const g=document.getElementById('div-card-grid');
+  if(!g) return;
+  const cards=allDiv.map(div=>{
+    const items=risks.filter(r=>r.divisions?.id===div.id);
+    if(!items.length) return '';
+    const 위험=items.filter(r=>r.grade==='위험').length;
+    const 주의=items.filter(r=>r.grade==='주의').length;
+    const 안전=items.filter(r=>r.grade==='안전').length;
+    const t=items.length;
+    const viol=items.reduce((s,r)=>s+(r.violation_count||0),0);
+    const mon=items.reduce((s,r)=>s+(r.monitoring_count||0),0);
+    const rate=mon>0?Math.round(viol/mon*100):0;
+    return `
+      <div class="bc" onclick="setDiv('${div.name}',document.getElementById('div-${div.name}'))" style="cursor:pointer">
+        <div class="bc-hd"><span class="bc-name">${div.name}</span><span class="bc-total-badge">${t}건</span></div>
+        <div class="bc-stats">
+          <div class="bc-stat s-위험"><span class="bc-stat-lbl">위험</span>${위험}</div>
+          <div class="bc-stat s-주의"><span class="bc-stat-lbl">주의</span>${주의}</div>
+          <div class="bc-stat s-안전"><span class="bc-stat-lbl">안전</span>${안전}</div>
+        </div>
+        <div class="bc-bar">
+          ${위험?`<div class="bs-위험" style="flex:${위험}"></div>`:''}
+          ${주의?`<div class="bs-주의" style="flex:${주의}"></div>`:''}
+          ${안전?`<div class="bs-안전" style="flex:${안전}"></div>`:''}
+        </div>
+        ${mon>0?`<div class="bc-rate"><span>위반율</span><div class="rate-bar-wrap"><div class="rate-bar-fill" style="width:${rate}%;background:var(--위험-c)"></div></div><span class="rate-val" style="color:var(--위험-c)">${rate}%</span></div>`:''}
+      </div>`;
+  }).filter(Boolean).join('');
+  g.innerHTML=cards||'<div style="color:var(--text3);font-size:12px">데이터 없음</div>';
 }
 
 // ── 브랜드 카드 ────────────────────────────
@@ -493,9 +537,32 @@ function renderList(){
       <td><button class="btn btn-sm" onclick="event.stopPropagation();openEdit('${r.id}')">수정</button></td>
     </tr>`;
   }).join(''):'<tr><td colspan="14" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">조건에 맞는 데이터 없음</td></tr>';
-  const pg=document.getElementById('pgn');
-  pg.innerHTML=tp<=1?'':Array.from({length:tp},(_,i)=>
-    `<button class="${i+1===lPage?'on':''}" onclick="lPage=${i+1};renderList()">${i+1}</button>`).join('');
+  document.getElementById('pgn').innerHTML=buildPagination(lPage,tp);
+}
+
+// 페이지네이션: 처음/끝 + 현재 주변 + 이전/다음
+function buildPagination(cur,tp){
+  if(tp<=1) return '';
+  const btn=(label,page,opts={})=>{
+    const cls=[opts.cls||'',page===cur?'on':''].filter(Boolean).join(' ');
+    const dis=opts.disabled?' disabled':'';
+    const ck=opts.disabled?'':`onclick="lPage=${page};renderList()"`;
+    return `<button class="${cls}"${dis} ${ck}>${label}</button>`;
+  };
+  const sep=()=>`<span style="padding:0 4px;color:var(--text3);font-size:11px">…</span>`;
+  const parts=[];
+  parts.push(btn('‹',Math.max(1,cur-1),{disabled:cur===1,cls:'pg-nav'}));
+  // 페이지 번호: 첫·끝 + 현재 주변 ±2
+  const pages=new Set([1,tp,cur,cur-1,cur+1,cur-2,cur+2]);
+  const list=[...pages].filter(p=>p>=1&&p<=tp).sort((a,b)=>a-b);
+  let prev=0;
+  for(const p of list){
+    if(p-prev>1) parts.push(sep());
+    parts.push(btn(p,p));
+    prev=p;
+  }
+  parts.push(btn('›',Math.min(tp,cur+1),{disabled:cur===tp,cls:'pg-nav'}));
+  return parts.join('');
 }
 
 // ── 드릴다운 ───────────────────────────────
@@ -717,31 +784,52 @@ async function generateMockData(){
   if(!allDiv.length||!allBrands.length||!allCats.length){
     showToast('마스터 데이터(계열사/브랜드/대분류)가 비어있어요');return;
   }
-  if(!confirm('1,254건의 Mock 데이터를 생성합니다. 계속하시겠어요?')) return;
+  if(!confirm('987건의 Mock 데이터를 생성합니다. 계속하시겠어요?')) return;
   const btn=document.getElementById('mock-gen-btn');
   const status=document.getElementById('mock-status');
   btn.disabled=true; btn.textContent='생성 중...';
-  const TARGET=1254;
+  const TARGET=987;
   const now=new Date();
+
+  // 계열사별 가중치 (최소 10% 보장)
+  const DIV_WEIGHTS={'패션':28,'유통':22,'외식':18,'파크':12,'건설':10,'소법인':10};
+  const divWeights=allDiv.map(d=>[d, DIV_WEIGHTS[d.name]||15]);
+  // 대분류별 가중치 (앞쪽이 많고 뒤로 갈수록 작아짐, 최소 5)
+  const catWeights=allCats.map((c,i)=>[c, Math.max(5, 30 - i*3)]);
+  // 등급 목표 분포: 안전 ≫ 주의 ≫ 위험
+  const gradeWeights=[['안전',62],['주의',25],['위험',13]];
+
   const batch=[];
   for(let i=0;i<TARGET;i++){
-    const div=pick(allDiv);
+    const div=pickWeighted(divWeights);
     const divBrands=allBrands.filter(b=>b.division_id===div.id);
     if(!divBrands.length) continue;
     const brand=pick(divBrands);
-    const cat=pick(allCats);
+    const cat=pickWeighted(catWeights);
     const catSubs=allSubs.filter(s=>s.category_id===cat.id);
     const sub=catSubs.length?pick(catSubs):null;
-    // 등록일: 최근 380일 내 (일부는 지연 발생용으로 오래 전)
-    const daysAgo=Math.floor(Math.random()*380);
+
+    // 등급 목표를 먼저 정한 뒤, 그에 맞는 등록일/상태 조합
+    const gradeTarget=pickWeighted(gradeWeights);
+    let daysAgo, state;
+    if(gradeTarget==='안전'){
+      daysAgo=Math.floor(Math.random()*7);       // 0~6일
+      state=pickWeighted([['모니터링',35],['위반',20],['완료',45]]);
+    } else if(gradeTarget==='주의'){
+      daysAgo=7+Math.floor(Math.random()*7);     // 7~13일
+      state=pickWeighted([['모니터링',60],['위반',40]]);
+    } else { // 위험
+      daysAgo=14+Math.floor(Math.random()*90);   // 14~103일
+      state=pickWeighted([['모니터링',70],['위반',30]]);
+    }
     const regDate=new Date(now); regDate.setDate(now.getDate()-daysAgo);
-    // 상태 분포: 모니터링 55% / 위반 25% / 완료 20%
-    const state=pickWeighted([['모니터링',55],['위반',25],['완료',20]]);
+
     // 모니터링/위반 카운트
     const monCnt=Math.floor(Math.random()*120)+5;
     const violCnt=state==='완료'?Math.floor(monCnt*Math.random()*0.6)
                   :state==='위반'?Math.floor(monCnt*Math.random()*0.4)
                   :Math.floor(monCnt*Math.random()*0.15);
+
     batch.push({
       division_id:div.id,brand_id:brand.id,category_id:cat.id,
       subcategory_id:sub?.id||null,
@@ -763,7 +851,7 @@ async function generateMockData(){
     const {error}=await sb.from('risks').insert(chunk);
     if(error){
       showToast('생성 중 오류: '+error.message);
-      btn.disabled=false; btn.textContent='1,254건 생성';
+      btn.disabled=false; btn.textContent='987건 생성';
       await loadAll();
       return;
     }
