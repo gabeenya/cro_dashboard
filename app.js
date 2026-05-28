@@ -43,6 +43,32 @@ async function doLogout(){
   location.replace('login.html');
 }
 
+// ── 사이드바 토글 (모바일) ─────────────────────────────
+function toggleSidebar(){
+  const sb=document.querySelector('.sb');
+  const ov=document.getElementById('sb-overlay');
+  const open=sb.classList.toggle('open');
+  if(ov) ov.classList.toggle('on',open);
+  document.body.classList.toggle('sb-open',open);
+}
+function closeSidebar(){
+  const sb=document.querySelector('.sb');
+  if(!sb||!sb.classList.contains('open')) return;
+  sb.classList.remove('open');
+  const ov=document.getElementById('sb-overlay'); if(ov) ov.classList.remove('on');
+  document.body.classList.remove('sb-open');
+}
+// 사이드바 내 메뉴 클릭 시 자동 닫기 (모바일 한정)
+document.addEventListener('click',(e)=>{
+  if(window.innerWidth>768) return;
+  if(!e.target.closest('.mgmt-item, .div-item')) return;
+  closeSidebar();
+});
+// 창 크기 데스크탑으로 복귀 시 사이드바 상태 초기화
+window.addEventListener('resize',()=>{
+  if(window.innerWidth>768) closeSidebar();
+});
+
 // 사이드바 사용자 정보·관리자 메뉴 표시
 function renderUserBox(){
   if(!currentUser) return;

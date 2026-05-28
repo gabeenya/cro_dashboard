@@ -232,7 +232,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .chart-row .card-bd{padding:10px 14px;flex:1;display:flex;align-items:center;justify-content:center}
 .chart-row .chart-box,.chart-row .donut-wrap{width:100%}
 .chart-box{height:clamp(220px,26vh,300px);position:relative}
-.donut-wrap{display:flex;align-items:center;gap:12px}
+.donut-wrap{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
 .donut-box{width:clamp(150px,13vw,190px);aspect-ratio:1;flex-shrink:0;position:relative}
 .donut-ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
 .donut-ctr-n{font-size:22px;font-weight:700;color:var(--text)}
@@ -377,19 +377,72 @@ textarea.fc{resize:vertical;min-height:68px}
 .fmt-btn.on{border-color:var(--red);background:var(--red-light);color:var(--red)}
 
 /* ════ 자동 순환 (위험도별 분류) ════ */
-.ticker-wrap{max-height:340px;overflow:hidden;position:relative}
+.ticker-wrap{max-height:340px;overflow-y:hidden;overflow-x:auto;position:relative}
 .ticker-wrap table{width:100%}
 .ticker-wrap tbody tr{transition:opacity 0.4s}
+
+/* ════ 햄버거 / 사이드바 오버레이 (모바일용) ════ */
+.tb-hamburger{
+  display:none;width:36px;height:36px;
+  align-items:center;justify-content:center;
+  border:1px solid var(--border);background:var(--surface);
+  border-radius:var(--r);cursor:pointer;color:var(--navy);flex-shrink:0;
+  padding:0;
+}
+.tb-hamburger svg{width:18px;height:18px}
+.tb-hamburger:hover{background:var(--bg)}
+.sb-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.4);z-index:99;
+  -webkit-tap-highlight-color:transparent;
+}
+.sb-overlay.on{display:block}
 
 /* ════ 반응형 ════ */
 @media(max-width:1200px){
   .kpi-row-1,.kpi-row-2{grid-template-columns:repeat(3,1fr)}
   .brand-grid{grid-template-columns:repeat(3,1fr)}
 }
-@media(max-width:900px){
+@media(max-width:1100px){
   .chart-row,.two-col{grid-template-columns:1fr}
+}
+@media(max-width:900px){
   .brand-grid{grid-template-columns:repeat(2,1fr)}
   .kpi-row-1,.kpi-row-2{grid-template-columns:1fr 1fr}
+}
+
+/* ════ 모바일 (768px 이하) ════ */
+@media (max-width:768px){
+  .sb{
+    transform:translateX(-100%);
+    transition:transform .25s ease;
+    box-shadow:6px 0 18px rgba(0,0,0,0.18);
+  }
+  .sb.open{transform:translateX(0)}
+  .main{margin-left:0;min-width:0}
+  .topbar{padding:0 12px;height:54px;gap:10px}
+  .tb-left{gap:10px;min-width:0;flex:1;overflow:hidden}
+  .tb-title{font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .tb-crumb{display:none}
+  .tb-date{display:none}
+  .tb-right .btn{padding:5px 9px;font-size:11px}
+  .fbar{padding:8px 12px;gap:6px}
+  .fbar select{font-size:11px;padding:4px 7px}
+  .content{padding:14px 12px;max-width:100%}
+  .tb-hamburger{display:flex}
+  body.sb-open{overflow:hidden}
+  .kpi-row-1,.kpi-row-2{grid-template-columns:1fr 1fr}
+  .brand-grid{grid-template-columns:1fr 1fr}
+  .modal{width:96vw;max-width:96vw}
+}
+
+@media (max-width:480px){
+  .topbar{padding:0 10px;height:50px}
+  .tb-title{font-size:13px}
+  .content{padding:12px 10px}
+  .kpi-row-1,.kpi-row-2{grid-template-columns:1fr}
+  .brand-grid{grid-template-columns:1fr}
+  .fgrid{grid-template-columns:1fr}
 }
 
 /* ════ AI 분석 페이지 ════ */
