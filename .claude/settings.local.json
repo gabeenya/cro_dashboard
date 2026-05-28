@@ -5,7 +5,13 @@
       "Read(//tmp/pptx_extract/ppt/**)",
       "Bash(seq 1 27)",
       "Bash(echo '===== Slide __TRACKED_VAR__ =====')",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(awk 'NR==21' \"C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html\")",
+      "Bash(awk 'NR>=20 && NR<=24' \"C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html\")",
+      "Bash(awk 'NR==22' \"C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html\")",
+      "Bash(xxd)",
+      "Bash(magick -version)",
+      "Bash(convert -version)"
     ]
   }
 }
