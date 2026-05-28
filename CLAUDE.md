@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 - 이랜드그룹 8대 리스크를 모니터링·집계·시각화하는 사내 대시보드
 - 백엔드: Supabase (URL/Anon Key는 `app.js` 상단)
-- 외부 라이브러리: Supabase JS, Chart.js, pptxgenjs (CDN으로 로딩)
+- 외부 라이브러리: Supabase JS, Chart.js, pptxgenjs, marked (CDN으로 로딩)
 - 사용자(소유자)는 비개발자 — 설명·제안은 평이한 한국어로
 
 ## 파일 구조 (2026-05-22 분리 완료, 2026-05-28 로그인 추가)
@@ -15,6 +15,15 @@
 - `README.md` — 거의 비어있음
 
 **GitHub 배포 시 주의:** index.html / login.html / style.css / app.js 네 파일을 함께 업로드해야 동작함.
+
+## AI 분석 (2026-05-28)
+- 사이드바 "AI 분석" 메뉴 → `page-ai`
+- 계열사 1개 선택 + 6개 분석 항목 다중 선택 (위험도식별/트렌드/액션플랜/추세패턴/유사사례/계열사비교)
+- 클라이언트는 데이터 요약(텍스트)만 만들어 Edge Function에 전송 → API 키 노출 없음
+- Edge Function: `analyze-risk` (Supabase Functions). Authorization 헤더로 사용자 JWT 검증 + profiles.approved 확인 후 Claude API 호출
+- 모델: `claude-sonnet-4-6` (max_tokens 4000). 토큰 비용은 분석 결과 상단 메타에 표시됨
+- 환경변수: `ANTHROPIC_API_KEY` (Supabase Edge Functions Secrets)
+- 결과는 Markdown → marked.js로 렌더
 
 ## 인증 / 권한 (2026-05-28)
 - Supabase Auth(Email/Password) 사용

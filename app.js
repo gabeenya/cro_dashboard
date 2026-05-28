@@ -623,7 +623,7 @@ function showPage(name,btn){
   if(btn) btn.classList.add('on');
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
   document.getElementById('page-'+name).classList.add('on');
-  const crumbs={'dashboard':'대시보드','list':'모니터링 리스트','input':'데이터 입력','admin':'회원 관리'};
+  const crumbs={'dashboard':'대시보드','list':'모니터링 리스트','input':'데이터 입력','admin':'회원 관리','ai':'AI 분석'};
   document.getElementById('page-crumb').textContent=crumbs[name]||name;
   // 대시보드 페이지일 때만 상단 필터 표시
   const fbar=document.getElementById('main-fbar');
@@ -690,6 +690,166 @@ async function revokeUser(uid){
 function escapeHTML(s){
   if(s==null) return '';
   return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── AI 분석 ─────────────────────────────────
+// 분석 대상 데이터를 텍스트로 요약(토큰 효율) → Edge Function 호출 → 결과 렌더.
+function buildDataSummary(divFilter){
+  const base = divFilter ? allRisks.filter(r=>r.divisions?.name===divFilter) : allRisks;
+  const now = new Date();
+  const prevD = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const prevY = prevD.getFullYear(), prevM = prevD.getMonth();
+  const prevMonth = base.filter(r=>{
+    if(!r.registered_at) return false;
+    const d = new Date(r.registered_at);
+    return d.getFullYear()===prevY && d.getMonth()===prevM;
+  });
+  const isV = r=>r.item_state==='위반'||r.item_state==='완료';
+  const accV = base.filter(isV).length;
+  const monV = prevMonth.filter(isV).length;
+  const done = base.filter(r=>r.item_state==='완료').length;
+  const open = base.filter(r=>r.item_state==='위반').length;
+  const doneRate = (done+open)>0 ? Math.round(done/(done+open)*100) : 0;
+  const pct = (n,d)=>d>0?Math.round(n/d*100):0;
+
+  const L = [];
+  L.push(`[기준일] ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`);
+  L.push(`[분석 대상] ${divFilter||'그룹 전체'}`);
+  L.push('');
+  L.push('[전체 KPI]');
+  L.push(`- 누적 모니터링: ${base.length}건 (위반 ${accV}건, ${pct(accV,base.length)}%)`);
+  L.push(`- 전월(${prevY}-${String(prevM+1).padStart(2,'0')}) 모니터링: ${prevMonth.length}건 (위반 ${monV}건, ${pct(monV,prevMonth.length)}%)`);
+  L.push(`- 처리 완료율: ${doneRate}% (완료 ${done} / 위반 처리중 ${open})`);
+  L.push(`- 조치중(위반 진행): ${open}건`);
+  L.push('');
+
+  // 계열사별
+  if(!divFilter){
+    L.push('[계열사별 (연누적) — 전체/위반]');
+    allDiv.forEach(d=>{
+      const it = base.filter(r=>r.divisions?.id===d.id);
+      if(!it.length) return;
+      const v = it.filter(isV).length;
+      L.push(`- ${d.name}: ${it.length}/${v}`);
+    });
+    L.push('');
+  }
+
+  // 8대 리스크 카테고리
+  L.push('[8대 리스크 카테고리별 (연누적) — 전체/위반]');
+  allCats.forEach(c=>{
+    const it = base.filter(r=>r.risk_categories?.id===c.id);
+    const v = it.filter(isV).length;
+    L.push(`- ${c.name}: ${it.length}/${v}`);
+  });
+  L.push('');
+
+  // 카테고리 × 계열사 매트릭스 (전월 기준)
+  if(!divFilter && prevMonth.length){
+    L.push('[전월 카테고리 × 계열사 매트릭스 — 위반 건수]');
+    const head = ['카테고리', ...allDiv.map(d=>d.name)].join(' | ');
+    L.push(head);
+    allCats.forEach(c=>{
+      const row=[c.name];
+      allDiv.forEach(d=>{
+        const cell=prevMonth.filter(r=>r.risk_categories?.id===c.id && r.divisions?.id===d.id);
+        row.push(String(cell.filter(isV).length));
+      });
+      L.push(row.join(' | '));
+    });
+    L.push('');
+  }
+
+  // 등급 분포
+  const 위험=base.filter(r=>r.grade==='위험').length;
+  const 주의=base.filter(r=>r.grade==='주의').length;
+  const 안전=base.filter(r=>r.grade==='안전').length;
+  L.push('[현재 등급 분포]');
+  L.push(`- 위험: ${위험}건 / 주의: ${주의}건 / 안전: ${안전}건`);
+  L.push('');
+
+  // 최근 6개월 추세
+  L.push('[최근 6개월 월별 추세 — 전체(위반)]');
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const y=d.getFullYear(), m=d.getMonth();
+    const mn = base.filter(r=>{
+      if(!r.registered_at) return false;
+      const rd = new Date(r.registered_at);
+      return rd.getFullYear()===y && rd.getMonth()===m;
+    });
+    const v = mn.filter(isV).length;
+    L.push(`- ${y}-${String(m+1).padStart(2,'0')}: ${mn.length}(${v})`);
+  }
+  L.push('');
+
+  // 위험 등급 항목 샘플 (최근 10건)
+  const hi = base.filter(r=>r.grade==='위험')
+    .sort((a,b)=>(b.registered_at||'').localeCompare(a.registered_at||''))
+    .slice(0,10);
+  if(hi.length){
+    L.push('[위험 등급 항목 (최근 10건)]');
+    hi.forEach(r=>{
+      L.push(`- [${r.divisions?.name||'-'}/${r.brands?.name||'-'}] ${r.risk_categories?.name||'-'}${r.risk_subcategories?.name?'/'+r.risk_subcategories.name:''}: ${r.title} (등록 ${r.registered_at||'-'}, 상태 ${r.item_state||'-'})`);
+    });
+  }
+  return L.join('\n');
+}
+
+async function runAIAnalysis(){
+  const divFilter = document.querySelector('input[name="ai-div"]:checked')?.value || '';
+  const items = Array.from(document.querySelectorAll('.ai-item:checked')).map(c=>c.value);
+  if(!items.length){ showToast('분석 항목을 1개 이상 선택해주세요'); return; }
+
+  const btn = document.getElementById('ai-run-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span style="display:inline-block;width:11px;height:11px;border:2px solid #fff5;border-top-color:#fff;border-radius:50%;animation:ai-spin .8s linear infinite;margin-right:6px;vertical-align:-1px"></span>분석 중...';
+  const resEl = document.getElementById('ai-result');
+  resEl.innerHTML = '<div class="ai-loading"><div class="ai-loading-spinner"></div><div>AI가 데이터를 분석하고 있습니다...<br><span style="font-size:11px;color:var(--text3)">10~30초 정도 소요</span></div></div>';
+  document.getElementById('ai-meta').textContent = '';
+
+  const dataSummary = buildDataSummary(divFilter);
+
+  try {
+    const {data:{session}} = await sb.auth.getSession();
+    if(!session){
+      resEl.innerHTML = '<div class="ai-err"><b>세션 만료</b> — 다시 로그인 후 시도해주세요.</div>';
+      return;
+    }
+    const fnUrl = `${SUPABASE_URL}/functions/v1/analyze-risk`;
+    const r = await fetch(fnUrl,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${session.access_token}`,
+        'apikey':SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({
+        divisionFilter: divFilter,
+        analysisItems: items,
+        dataSummary
+      })
+    });
+    if(!r.ok){
+      let err='요청 실패';
+      try { const e=await r.json(); err=e.error||JSON.stringify(e); } catch{}
+      resEl.innerHTML = `<div class="ai-err"><b>분석 실패 (HTTP ${r.status})</b><br>${escapeHTML(err)}</div>`;
+      return;
+    }
+    const data = await r.json();
+    const md = data.analysis || '(빈 응답)';
+    const html = (typeof marked!=='undefined') ? marked.parse(md) : md.replace(/\n/g,'<br>');
+    resEl.innerHTML = `<div class="ai-md">${html}</div>`;
+    if(data.usage){
+      const tk = (data.usage.input_tokens||0) + (data.usage.output_tokens||0);
+      document.getElementById('ai-meta').textContent = `토큰 ${tk.toLocaleString()} · ${data.model||''}`;
+    }
+  } catch(e){
+    resEl.innerHTML = `<div class="ai-err"><b>호출 오류</b><br>${escapeHTML(String(e.message||e))}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px"><path d="M12 2l2.39 5.07L20 8l-4 3.9.94 5.5L12 14.77 7.06 17.4 8 11.9 4 8l5.61-.93L12 2z"/></svg>AI 분석 실행';
+  }
 }
 
 // ── 상태 선택 ──────────────────────────────
