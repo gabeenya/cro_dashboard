@@ -919,6 +919,285 @@ async function saveInput(){
   resetInput();
   await loadAll();
 }
+
+// ── 일괄 업로드 (엑셀) ─────────────────────────────
+let bulkPendingRows=null;
+
+function colToLetter(n){
+  let s='';
+  while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); }
+  return s;
+}
+function sanitizeName(s){
+  // Excel 정의명에 사용할 수 있도록: 영문/숫자/한글/언더스코어만 남김
+  return String(s).replace(/[^\w가-힣]/g,'_');
+}
+
+async function downloadBulkTemplate(){
+  if(!window.ExcelJS){ showToast('엑셀 라이브러리 로딩 중. 잠시 후 다시 시도해주세요.'); return; }
+  if(!allDiv.length||!allBrands.length||!allCats.length){
+    showToast('기준 데이터(계열사/브랜드/대분류)가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.'); return;
+  }
+  const wb=new ExcelJS.Workbook();
+  wb.creator='이랜드 그룹 리스크 관리 시스템';
+  wb.created=new Date();
+
+  // 1) 입력 시트
+  const ws=wb.addWorksheet('입력',{views:[{state:'frozen',ySplit:1}]});
+  ws.columns=[
+    {header:'등록일(YYYY-MM-DD) *',key:'date',width:22},
+    {header:'계열사 *',key:'div',width:14},
+    {header:'브랜드/조직 *',key:'brand',width:22},
+    {header:'대분류 *',key:'cat',width:20},
+    {header:'중분류',key:'sub',width:24},
+    {header:'리스크명 *',key:'title',width:36},
+    {header:'상태 *',key:'state',width:12}
+  ];
+  const hdr=ws.getRow(1);
+  hdr.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
+  hdr.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1A2744'}};
+  hdr.alignment={vertical:'middle',horizontal:'center'};
+  hdr.height=26;
+
+  // 2) 참조 시트 (숨김)
+  const ref=wb.addWorksheet('_참조',{state:'hidden'});
+
+  // A열: 계열사 목록
+  ref.getCell('A1').value='__계열사__';
+  allDiv.forEach((d,i)=>{ ref.getCell(`A${i+2}`).value=d.name; });
+  // B열: 대분류 목록
+  ref.getCell('B1').value='__대분류__';
+  allCats.forEach((c,i)=>{ ref.getCell(`B${i+2}`).value=c.name; });
+  // C열: 상태
+  ref.getCell('C1').value='__상태__';
+  ['모니터링','위반','완료'].forEach((s,i)=>{ ref.getCell(`C${i+2}`).value=s; });
+
+  wb.definedNames.add(`_참조!$A$2:$A$${allDiv.length+1}`,'_divs');
+  wb.definedNames.add(`_참조!$B$2:$B$${allCats.length+1}`,'_cats');
+  wb.definedNames.add(`_참조!$C$2:$C$4`,'_states');
+
+  // 각 계열사의 브랜드, 각 대분류의 중분류를 가로로 배치
+  let col=5; // E열부터
+  allDiv.forEach(div=>{
+    const brands=allBrands.filter(b=>b.division_id===div.id);
+    if(brands.length===0) return;
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value=div.name;
+    brands.forEach((b,i)=>{ ref.getCell(`${L}${i+2}`).value=b.name; });
+    wb.definedNames.add(`_참조!$${L}$2:$${L}$${brands.length+1}`,`_b_${sanitizeName(div.name)}`);
+    col++;
+  });
+  allCats.forEach(cat=>{
+    const subs=allSubs.filter(s=>s.category_id===cat.id);
+    if(subs.length===0) return;
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value=cat.name;
+    subs.forEach((s,i)=>{ ref.getCell(`${L}${i+2}`).value=s.name; });
+    wb.definedNames.add(`_참조!$${L}$2:$${L}$${subs.length+1}`,`_s_${sanitizeName(cat.name)}`);
+    col++;
+  });
+
+  // 3) 입력 시트에 데이터 검증 적용 (행 2 ~ 501)
+  const ROWS=500;
+  for(let r=2; r<=ROWS+1; r++){
+    ws.getCell(`A${r}`).numFmt='yyyy-mm-dd';
+    ws.getCell(`B${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_divs'],showErrorMessage:true,errorTitle:'잘못된 값',error:'드롭다운에서 선택하세요.'};
+    ws.getCell(`C${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_b_"&SUBSTITUTE(B${r}," ","_"))`]};
+    ws.getCell(`D${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_cats']};
+    ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
+    ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_states']};
+  }
+
+  // 4) 안내 시트
+  const guide=wb.addWorksheet('안내');
+  guide.getColumn(1).width=80;
+  const lines=[
+    '[일괄 업로드 사용 안내]',
+    '',
+    '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
+    '2. 별표(*) 표시 컬럼은 필수입니다.',
+    '3. 계열사 / 브랜드 / 대분류 / 중분류 / 상태는 드롭다운에서 선택하세요.',
+    '4. 브랜드는 계열사를, 중분류는 대분류를 먼저 선택하면 자동 필터됩니다.',
+    '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
+    '6. 등급(위험/주의/안전)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
+    '7. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
+    '8. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
+  ];
+  lines.forEach((t,i)=>{ guide.getCell(`A${i+1}`).value=t; });
+  guide.getCell('A1').font={bold:true,size:14,color:{argb:'FFC8102E'}};
+
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const ts=new Date().toISOString().slice(0,10);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`리스크_일괄업로드_양식_${ts}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function triggerBulkUpload(){
+  document.getElementById('bulk-file').click();
+}
+
+async function handleBulkUpload(ev){
+  const file=ev.target.files[0];
+  ev.target.value='';
+  if(!file) return;
+  if(!window.ExcelJS){ showToast('엑셀 라이브러리 로딩 중. 잠시 후 다시 시도해주세요.'); return; }
+
+  const resultDiv=document.getElementById('bulk-result');
+  resultDiv.innerHTML='<div style="color:var(--text2);padding:8px 0">파일 읽는 중...</div>';
+
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const ws=wb.getWorksheet('입력')||wb.worksheets[0];
+    if(!ws){ resultDiv.innerHTML='<div style="color:var(--red);padding:8px 0">시트를 찾을 수 없습니다.</div>'; return; }
+
+    // 헤더 매핑
+    const colMap={};
+    ws.getRow(1).eachCell((cell,colNumber)=>{
+      const t=String(cell.value||'').trim();
+      if(t.startsWith('등록일')) colMap.date=colNumber;
+      else if(t.startsWith('계열사')) colMap.div=colNumber;
+      else if(t.startsWith('브랜드')) colMap.brand=colNumber;
+      else if(t.startsWith('대분류')) colMap.cat=colNumber;
+      else if(t.startsWith('중분류')) colMap.sub=colNumber;
+      else if(t.startsWith('리스크명')) colMap.title=colNumber;
+      else if(t.startsWith('상태')) colMap.state=colNumber;
+    });
+    const missing=['date','div','brand','cat','title','state'].filter(k=>!colMap[k]);
+    if(missing.length){
+      resultDiv.innerHTML='<div style="color:var(--red);padding:8px 0">헤더가 양식과 다릅니다. 양식을 다시 다운로드해 사용해주세요.</div>';
+      return;
+    }
+
+    const rows=[];
+    const errors=[];
+    const lastRow=Math.min(ws.actualRowCount||1, 5001);
+
+    for(let r=2; r<=lastRow; r++){
+      const row=ws.getRow(r);
+      const dateCell=row.getCell(colMap.date).value;
+      const divName=String(row.getCell(colMap.div).value||'').trim();
+      const brandName=String(row.getCell(colMap.brand).value||'').trim();
+      const catName=String(row.getCell(colMap.cat).value||'').trim();
+      const subName=colMap.sub?String(row.getCell(colMap.sub).value||'').trim():'';
+      const title=String(row.getCell(colMap.title).value||'').trim();
+      const state=String(row.getCell(colMap.state).value||'').trim();
+
+      // 전부 비어있으면 skip
+      if(!dateCell&&!divName&&!brandName&&!catName&&!title&&!state) continue;
+
+      const errs=[];
+
+      // 날짜 정규화
+      let dateStr='';
+      if(dateCell instanceof Date){
+        const y=dateCell.getFullYear();
+        const m=String(dateCell.getMonth()+1).padStart(2,'0');
+        const d=String(dateCell.getDate()).padStart(2,'0');
+        dateStr=`${y}-${m}-${d}`;
+      } else if(dateCell){
+        const m=String(dateCell).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+        if(m) dateStr=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+      }
+      if(!dateStr) errs.push('등록일 누락/형식 오류');
+
+      const divObj=allDiv.find(d=>d.name===divName);
+      if(!divName) errs.push('계열사 누락');
+      else if(!divObj) errs.push(`계열사 '${divName}' 없음`);
+
+      let brandObj=null;
+      if(!brandName) errs.push('브랜드 누락');
+      else if(divObj){
+        brandObj=allBrands.find(b=>b.division_id===divObj.id&&b.name===brandName);
+        if(!brandObj) errs.push(`브랜드 '${brandName}'는 '${divName}'에 속하지 않음`);
+      }
+
+      const catObj=allCats.find(c=>c.name===catName);
+      if(!catName) errs.push('대분류 누락');
+      else if(!catObj) errs.push(`대분류 '${catName}' 없음`);
+
+      let subObj=null;
+      if(subName&&catObj){
+        subObj=allSubs.find(s=>s.category_id===catObj.id&&s.name===subName);
+        if(!subObj) errs.push(`중분류 '${subName}'는 '${catName}'에 속하지 않음`);
+      }
+
+      if(!title) errs.push('리스크명 누락');
+      if(!['모니터링','위반','완료'].includes(state)) errs.push('상태는 모니터링/위반/완료 중 하나');
+
+      if(errs.length){
+        errors.push({row:r, msgs:errs});
+      } else {
+        rows.push({
+          division_id:divObj.id, brand_id:brandObj.id, category_id:catObj.id,
+          subcategory_id:subObj?subObj.id:null,
+          grade:'안전', item_state:state, registered_at:dateStr, title,
+          status:null, note:null, violation_count:null, monitoring_count:null
+        });
+      }
+    }
+
+    bulkPendingRows=rows;
+
+    let html='';
+    html+=`<div style="font-weight:700;color:var(--navy);margin-bottom:6px;font-size:12.5px">검증 결과: 총 ${rows.length+errors.length}건 중 등록 가능 <b style="color:#065f46">${rows.length}건</b>, 오류 <b style="color:var(--red)">${errors.length}건</b></div>`;
+    if(errors.length>0){
+      html+=`<div style="max-height:180px;overflow:auto;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 10px;font-size:11.5px;line-height:1.6">`;
+      errors.slice(0,50).forEach(e=>{
+        html+=`<div><b>${e.row}행:</b> ${e.msgs.join(', ')}</div>`;
+      });
+      if(errors.length>50) html+=`<div style="margin-top:4px;color:var(--text2)">…외 ${errors.length-50}건</div>`;
+      html+=`</div>`;
+    }
+    if(rows.length>0){
+      html+=`<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">`;
+      html+=`<button class="btn" onclick="cancelBulkUpload()">취소</button>`;
+      html+=`<button class="btn btn-red" onclick="confirmBulkUpload()">유효한 ${rows.length}건 등록</button>`;
+      html+=`</div>`;
+    } else {
+      html+=`<div style="margin-top:10px;color:var(--text2)">등록 가능한 행이 없습니다. 오류를 수정 후 다시 업로드해주세요.</div>`;
+    }
+    resultDiv.innerHTML=html;
+  } catch(err){
+    console.error(err);
+    resultDiv.innerHTML=`<div style="color:var(--red);padding:8px 0">파일 처리 실패: ${err.message||err}</div>`;
+  }
+}
+
+function cancelBulkUpload(){
+  bulkPendingRows=null;
+  document.getElementById('bulk-result').innerHTML='';
+}
+
+async function confirmBulkUpload(){
+  if(!bulkPendingRows||bulkPendingRows.length===0) return;
+  const rows=bulkPendingRows;
+  bulkPendingRows=null;
+  const resultDiv=document.getElementById('bulk-result');
+  resultDiv.innerHTML=`<div style="color:var(--text2);padding:8px 0">등록 중... (${rows.length}건)</div>`;
+
+  const CHUNK=500;
+  let inserted=0;
+  for(let i=0; i<rows.length; i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK);
+    const {error}=await sb.from('risks').insert(chunk);
+    if(error){
+      resultDiv.innerHTML=`<div style="color:var(--red);padding:8px 0">등록 중 오류 (${inserted}건까지 완료): ${error.message}</div>`;
+      await loadAll();
+      return;
+    }
+    inserted+=chunk.length;
+  }
+  resultDiv.innerHTML=`<div style="color:#065f46;background:#ecfdf5;border:1px solid #a7f3d0;padding:10px;border-radius:6px;font-weight:600">✓ ${inserted}건 등록 완료</div>`;
+  showToast(`${inserted}건 일괄 등록 완료`);
+  await loadAll();
+}
+
 function renderRecentBody(){
   const recent=allRisks.slice(0,10);
   const b=document.getElementById('recent-body');
