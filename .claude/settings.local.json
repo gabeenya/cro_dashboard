@@ -11,7 +11,9 @@
       "Bash(awk 'NR==22' \"C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html\")",
       "Bash(xxd)",
       "Bash(magick -version)",
-      "Bash(convert -version)"
+      "Bash(convert -version)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
