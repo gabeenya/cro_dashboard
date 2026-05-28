@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-Content *)"
+      "PowerShell(Get-Content *)",
+      "Read(//tmp/pptx_extract/ppt/**)",
+      "Bash(seq 1 27)",
+      "Bash(echo '===== Slide __TRACKED_VAR__ =====')",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

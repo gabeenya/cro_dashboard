@@ -45,9 +45,15 @@ HTML 요소 ID 접두사로 어떤 영역인지 빠르게 식별 가능:
 - `risks` 실제 리스크 등록 데이터
   - 컬럼: registered_at, title, status, grade(위험/주의/안전), item_state(모니터링/위반/완료), note, violation_count, monitoring_count, division_id, brand_id, category_id, subcategory_id
 
+## 보고서 다운로드 (2026-05-28 구현)
+- `downloadPPT()`가 외식BG PPT 양식을 그룹 시스템용으로 변환해 생성
+- 슬라이드 구성: 표지 → 그룹 KPI → 계열사×8대 매트릭스(연누적/전월) → 카테고리별 상세(전월, 8장) → 영역별 요약 카드 → 계열사별 영역 매트릭스
+- '위반' 정의: `item_state IN ('위반','완료')` 일관 적용
+- 색상: `--navy`(`#1A2744`) + `--red`(`#C8102E`) 톤
+- 보고서 모달 라디오에서 특정 계열사 선택 시 해당 계열사 데이터만으로 생성됨
+
 ## 알려진 이슈
-- **`downloadPPT()` 미정의**: `app.js`의 `downloadReport()`가 `downloadPPT()`를 호출하지만 정의가 없음 → 보고서 다운로드 버튼이 동작하지 않음. 수정 시 정의 추가 필요.
-- 사용 안 되는 함수 `dlBlob()` 정의됨. 보고서 기능 구현 시 활용 가능.
+- 사용 안 되는 함수 `dlBlob()` 정의됨 (제거해도 무방, 다른 용도 필요 시 활용)
 
 ## 수정 작업 시 절약 팁
 - 디자인만 → `style.css`만 읽기

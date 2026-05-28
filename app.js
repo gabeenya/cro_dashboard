@@ -758,6 +758,329 @@ function downloadReport(){
   downloadPPT(); closeReportModal();
 }
 
+// ── PPT 보고서 생성 ─────────────────────────
+// 외식BG 양식을 그룹 전체용으로 변형:
+//   1) 표지  2) 그룹 전체 KPI  3) 계열사×8대 매트릭스(연누적)
+//   4) 계열사×8대 매트릭스(전월)  5)~12) 카테고리별 상세(전월)
+//   13) 영역별 결과 요약 카드(전월)  14)~ 계열사별 영역 매트릭스(전월)
+const RPT={
+  NAVY:'1A2744', NAVY2:'243460', RED:'C8102E', RED_DARK:'9E0C24', RED_BG:'FDF0F2',
+  TEXT:'111827', TEXT2:'4B5563', TEXT3:'9CA3AF',
+  BORDER:'DDE1EA', BORDER2:'C8CDD9', BG:'F9FAFB', SURF:'FFFFFF',
+  RISK_C:'C8102E', RISK_BG:'FEF2F2',
+  WARN_C:'D97706', WARN_BG:'FFF7ED',
+  SAFE_C:'065F46', SAFE_BG:'ECFDF5',
+  FONT:'Malgun Gothic'
+};
+// '위반' = item_state ∈ {위반, 완료}
+const isViol=r=>r.item_state==='위반'||r.item_state==='완료';
+const cViol=arr=>arr.filter(isViol).length;
+const cDone=arr=>arr.filter(r=>r.item_state==='완료').length;
+const cOpen=arr=>arr.filter(r=>r.item_state==='위반').length;
+const rPct =(n,d)=>d>0?Math.round(n/d*100):0;
+function rptMonthFilter(arr,y,m){
+  return arr.filter(r=>{
+    if(!r.registered_at) return false;
+    const d=new Date(r.registered_at);
+    return d.getFullYear()===y&&d.getMonth()===m;
+  });
+}
+// 셀: 숫자 없으면 '-'
+const dash=v=>(v==null||v===0)?'-':v;
+
+async function downloadPPT(){
+  const PptxLib = window.PptxGenJS || window.pptxgen || (typeof PptxGenJS!=='undefined'?PptxGenJS:null);
+  if(!PptxLib){showToast('PPT 라이브러리 로드 실패 — 새로고침(Ctrl+Shift+R) 후 다시 시도해주세요');return;}
+  if(!allRisks.length){showToast('데이터가 없어 보고서를 만들 수 없습니다');return;}
+  showToast('보고서 생성 중...');
+  const divFilter=document.querySelector('input[name="r-div"]:checked')?.value||'';
+  const baseRisks=divFilter?allRisks.filter(r=>r.divisions?.name===divFilter):allRisks;
+  const divs=divFilter?allDiv.filter(d=>d.name===divFilter):allDiv;
+  const now=new Date();
+  // 전월 = 직전 달
+  const prevD=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const pY=prevD.getFullYear(), pM=prevD.getMonth();
+  const prevRisks=rptMonthFilter(baseRisks,pY,pM);
+  const prevLabel=`${pY}년 ${String(pM+1).padStart(2,'0')}월 기준`;
+  const todayStr=`${now.getFullYear()}. ${now.getMonth()+1}. ${now.getDate()}.`;
+  const orgLabel=divFilter?`이랜드그룹 — ${divFilter}`:'이랜드그룹';
+
+  const pptx=new PptxLib();
+  pptx.layout='LAYOUT_WIDE'; // 13.33 × 7.5
+  pptx.title='이랜드그룹 리스크 관리 현황';
+  pptx.author='이랜드그룹 리스크 관리 시스템';
+
+  // 공통 헤더(상단 띠 + 슬라이드 타이틀) + 푸터
+  function head(slide, ttl, sub){
+    slide.background={color:RPT.SURF};
+    slide.addShape('rect',{x:0,y:0,w:13.33,h:0.55,fill:{color:RPT.NAVY},line:{type:'none'}});
+    slide.addShape('rect',{x:0,y:0.55,w:13.33,h:0.05,fill:{color:RPT.RED},line:{type:'none'}});
+    slide.addText(orgLabel,{x:0.4,y:0.07,w:8,h:0.4,fontSize:13,bold:true,color:'FFFFFF',fontFace:RPT.FONT});
+    slide.addText(prevLabel,{x:5,y:0.07,w:8,h:0.4,fontSize:11,color:'FFFFFF',fontFace:RPT.FONT,align:'right'});
+    slide.addText(ttl,{x:0.4,y:0.78,w:12.5,h:0.5,fontSize:22,bold:true,color:RPT.NAVY,fontFace:RPT.FONT});
+    if(sub) slide.addText(sub,{x:0.4,y:1.28,w:12.5,h:0.3,fontSize:11,color:RPT.TEXT3,fontFace:RPT.FONT});
+    slide.addText('Risk Monitoring & Analytics Report',{x:0.4,y:7.15,w:6,h:0.3,fontSize:8,color:RPT.TEXT3,fontFace:RPT.FONT,italic:true});
+    slide.addText(`기준일 ${todayStr}`,{x:7.33,y:7.15,w:5.6,h:0.3,fontSize:8,color:RPT.TEXT3,fontFace:RPT.FONT,align:'right'});
+  }
+
+  // ── 슬라이드 1: 표지 ───────────────────────
+  const s1=pptx.addSlide();
+  s1.background={color:RPT.NAVY};
+  s1.addShape('rect',{x:0,y:5.4,w:13.33,h:0.08,fill:{color:RPT.RED},line:{type:'none'}});
+  s1.addText(orgLabel,{x:0.8,y:1.6,w:11.7,h:0.8,fontSize:36,bold:true,color:'FFFFFF',fontFace:RPT.FONT});
+  s1.addText(`${pM+1}월 리스크 관리 현황`,{x:0.8,y:2.8,w:11.7,h:0.9,fontSize:50,bold:true,color:'FFFFFF',fontFace:RPT.FONT});
+  s1.addText('Risk Monitoring & Analytics Report',{x:0.8,y:4.6,w:11.7,h:0.5,fontSize:18,color:'D9DBE5',italic:true,fontFace:RPT.FONT});
+  s1.addText(`기준일 ${todayStr}   |   이랜드그룹 리스크 관리 시스템`,{x:0.8,y:5.7,w:11.7,h:0.5,fontSize:13,color:'B6BACA',fontFace:RPT.FONT});
+
+  // ── 슬라이드 2: 그룹 전체 KPI ─────────────────
+  const s2=pptx.addSlide(); head(s2,`${divFilter||'그룹'} 전체 리스크 현황`,prevLabel);
+  // 누적
+  const accAll=baseRisks.length, accV=cViol(baseRisks), accRate=rPct(accV,accAll);
+  // 전월
+  const monAll=prevRisks.length, monV=cViol(prevRisks), monRate=rPct(monV,monAll);
+  // 처리 완료율 / 조치중 (누적 기준)
+  const done=cDone(baseRisks), open=cOpen(baseRisks);
+  const doneTotal=done+open;
+  const doneRate=rPct(done,doneTotal);
+
+  // KPI 카드 4개 — 가로 1열
+  const kpis=[
+    {ttl:'누적 모니터링', big:`${accAll}건`, sub:`위반 ${accV}건 (${accRate}%)`, c:RPT.NAVY},
+    {ttl:'전월 모니터링', big:`${monAll}건`, sub:`위반 ${monV}건 (${monRate}%)`, c:RPT.NAVY2},
+    {ttl:'처리 완료율',   big:`${doneRate}%`, sub:`완료 ${done} / 위반 ${doneTotal}건`, c:RPT.SAFE_C},
+    {ttl:'조치중',        big:`${open}건`,    sub:'위반(처리중) 상태',                   c:RPT.RISK_C}
+  ];
+  const cardY=1.9, cardH=4.4, gap=0.2, cardW=(13.33-0.8-gap*3)/4;
+  kpis.forEach((k,i)=>{
+    const x=0.4+i*(cardW+gap);
+    s2.addShape('roundRect',{x,y:cardY,w:cardW,h:cardH,fill:{color:RPT.SURF},line:{color:RPT.BORDER,width:0.75},rectRadius:0.08});
+    s2.addShape('rect',{x:x,y:cardY,w:0.12,h:cardH,fill:{color:k.c},line:{type:'none'}});
+    s2.addText(k.ttl,{x:x+0.35,y:cardY+0.3,w:cardW-0.5,h:0.4,fontSize:11,bold:true,color:RPT.TEXT2,fontFace:RPT.FONT});
+    s2.addText(k.big,{x:x+0.35,y:cardY+1.2,w:cardW-0.5,h:1.2,fontSize:36,bold:true,color:k.c,fontFace:RPT.FONT});
+    s2.addText(k.sub,{x:x+0.35,y:cardY+3.0,w:cardW-0.5,h:0.6,fontSize:11,color:RPT.TEXT2,fontFace:RPT.FONT});
+  });
+
+  // ── 매트릭스 슬라이드 빌더 (계열사 × 8대 리스크) ─
+  function addMatrixSlide(title, srcRisks){
+    const sl=pptx.addSlide(); head(sl,title,prevLabel);
+    const rows=[];
+    // 헤더 1단: 계열사 + 각 카테고리(전체|위반 병합) + 합계
+    const h1=[{text:'계열사',options:{rowspan:2,bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:9}}];
+    allCats.forEach(c=>{ h1.push({text:c.name,options:{colspan:2,bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:9}}); });
+    h1.push({text:'합계',options:{colspan:2,bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',valign:'middle',fontSize:9}});
+    rows.push(h1);
+    // 헤더 2단: 전체 / 위반
+    const h2=[];
+    for(let i=0;i<allCats.length;i++){
+      h2.push({text:'전체',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
+      h2.push({text:'위반',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
+    }
+    h2.push({text:'전체',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:8}});
+    h2.push({text:'위반',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:8}});
+    rows.push(h2);
+    // 데이터 행: 계열사별
+    divs.forEach((dv,di)=>{
+      const items=srcRisks.filter(r=>r.divisions?.id===dv.id);
+      const r=[{text:dv.name,options:{bold:true,color:RPT.TEXT,fill:di%2?RPT.BG:RPT.SURF,align:'center',valign:'middle',fontSize:8}}];
+      let sumA=0, sumV=0;
+      allCats.forEach(c=>{
+        const cell=items.filter(x=>x.risk_categories?.id===c.id);
+        const a=cell.length, v=cViol(cell);
+        sumA+=a; sumV+=v;
+        r.push({text:String(dash(a)),options:{color:RPT.TEXT,fill:di%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
+        r.push({text:String(dash(v)),options:{color:v?RPT.RISK_C:RPT.TEXT3,bold:!!v,fill:di%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
+      });
+      r.push({text:String(dash(sumA)),options:{bold:true,color:RPT.TEXT,fill:RPT.BG,align:'center',fontSize:8}});
+      r.push({text:String(dash(sumV)),options:{bold:true,color:sumV?RPT.RISK_C:RPT.TEXT3,fill:RPT.BG,align:'center',fontSize:8}});
+      rows.push(r);
+    });
+    // 합계 행
+    const totA=srcRisks.length, totV=cViol(srcRisks);
+    const totRow=[{text:'합계',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:9}}];
+    allCats.forEach(c=>{
+      const cell=srcRisks.filter(x=>x.risk_categories?.id===c.id);
+      const a=cell.length, v=cViol(cell);
+      totRow.push({text:String(dash(a)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
+      totRow.push({text:String(dash(v)),options:{bold:true,color:v?'FFE4E8':'D9DBE5',fill:RPT.NAVY,align:'center',fontSize:8}});
+    });
+    totRow.push({text:String(dash(totA)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:9}});
+    totRow.push({text:String(dash(totV)),options:{bold:true,color:totV?'FFE4E8':'D9DBE5',fill:RPT.NAVY2,align:'center',fontSize:9}});
+    rows.push(totRow);
+
+    const nCol=1+allCats.length*2+2;
+    const tblW=12.53;
+    const firstW=1.05;
+    const totW=1.4; // 합계 2칸 합
+    const rest=tblW-firstW-totW;
+    const dataW=rest/(allCats.length*2);
+    const colW=[firstW];
+    for(let i=0;i<allCats.length*2;i++) colW.push(dataW);
+    colW.push(totW/2); colW.push(totW/2);
+    sl.addTable(rows,{
+      x:0.4,y:1.7,w:tblW,colW,
+      border:{type:'solid',pt:0.5,color:RPT.BORDER},
+      rowH:0.32, fontFace:RPT.FONT
+    });
+  }
+  addMatrixSlide('계열사별 현황 (연누적)', baseRisks);
+  addMatrixSlide('계열사별 현황 (전월)',  prevRisks);
+
+  // ── 슬라이드 5~12: 8대 카테고리 상세 (전월) ─
+  function addCatDetailSlide(cat){
+    const sl=pptx.addSlide(); head(sl, `${cat.name} 모니터링 상세 현황`, `${prevLabel} (전월)`);
+    const items=prevRisks.filter(r=>r.risk_categories?.id===cat.id);
+    const subs=allSubs.filter(s=>s.category_id===cat.id);
+    // 컬럼: 세부항목 + 각 계열사(전체|위반) + 소계(전체|위반)
+    const colDivs=divs;
+    const rows=[];
+    const h1=[{text:'세부 항목',options:{rowspan:2,bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:9}}];
+    colDivs.forEach(d=>{ h1.push({text:d.name,options:{colspan:2,bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:9}}); });
+    h1.push({text:'소계',options:{colspan:2,bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',valign:'middle',fontSize:9}});
+    rows.push(h1);
+    const h2=[];
+    for(let i=0;i<colDivs.length;i++){
+      h2.push({text:'전체',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
+      h2.push({text:'위반',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
+    }
+    h2.push({text:'전체',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:8}});
+    h2.push({text:'위반',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:8}});
+    rows.push(h2);
+    // 중분류 행 (없으면 '데이터 없음' 한 줄)
+    if(!subs.length && !items.length){
+      const span=1+colDivs.length*2+2;
+      rows.push([{text:'위반 데이터 없음',options:{colspan:span,color:RPT.TEXT3,align:'center',fontSize:10,italic:true,fill:RPT.BG}}]);
+    } else {
+      // 중분류 미지정 항목도 포함하기 위해 [null, ...subs] 흐름
+      const rowKeys=subs.length?subs:[{id:null,name:'(중분류 미지정)'}];
+      rowKeys.forEach((sb,ri)=>{
+        const r=[{text:sb.name,options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'left',valign:'middle',fontSize:8}}];
+        let sa=0,sv=0;
+        colDivs.forEach(dv=>{
+          const cell=items.filter(x=>x.divisions?.id===dv.id && (sb.id?x.risk_subcategories?.id===sb.id:!x.risk_subcategories?.id));
+          const a=cell.length, v=cViol(cell);
+          sa+=a; sv+=v;
+          r.push({text:String(dash(a)),options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
+          r.push({text:String(dash(v)),options:{color:v?RPT.RISK_C:RPT.TEXT3,bold:!!v,fill:ri%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
+        });
+        r.push({text:String(dash(sa)),options:{bold:true,color:RPT.TEXT,fill:RPT.BG,align:'center',fontSize:8}});
+        r.push({text:String(dash(sv)),options:{bold:true,color:sv?RPT.RISK_C:RPT.TEXT3,fill:RPT.BG,align:'center',fontSize:8}});
+        rows.push(r);
+      });
+      // 합계 행
+      const tRow=[{text:'합계',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:9}}];
+      let ta=0, tv=0;
+      colDivs.forEach(dv=>{
+        const cell=items.filter(x=>x.divisions?.id===dv.id);
+        const a=cell.length, v=cViol(cell);
+        ta+=a; tv+=v;
+        tRow.push({text:String(dash(a)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
+        tRow.push({text:String(dash(v)),options:{bold:true,color:v?'FFE4E8':'D9DBE5',fill:RPT.NAVY,align:'center',fontSize:8}});
+      });
+      tRow.push({text:String(dash(ta)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:9}});
+      tRow.push({text:String(dash(tv)),options:{bold:true,color:tv?'FFE4E8':'D9DBE5',fill:RPT.NAVY2,align:'center',fontSize:9}});
+      rows.push(tRow);
+    }
+    const tblW=12.53;
+    const firstW=2.2;
+    const totW=1.2;
+    const rest=tblW-firstW-totW;
+    const dataW=rest/(colDivs.length*2);
+    const colW=[firstW];
+    for(let i=0;i<colDivs.length*2;i++) colW.push(dataW);
+    colW.push(totW/2); colW.push(totW/2);
+    sl.addTable(rows,{x:0.4,y:1.7,w:tblW,colW,border:{type:'solid',pt:0.5,color:RPT.BORDER},rowH:0.34,fontFace:RPT.FONT});
+  }
+  allCats.forEach(addCatDetailSlide);
+
+  // ── 슬라이드 13: 영역별 결과 요약 (8개 카드, 전월) ─
+  const s13=pptx.addSlide(); head(s13, '영역별 모니터링 결과 요약', `${prevLabel} (전월)`);
+  // 4열 × 2행 = 8개
+  const sumX0=0.4, sumY0=1.85, sumGapX=0.18, sumGapY=0.22;
+  const sumW=(12.53-sumGapX*3)/4, sumH=(5.15-sumGapY)/2;
+  allCats.slice(0,8).forEach((cat,idx)=>{
+    const r=Math.floor(idx/4), c=idx%4;
+    const x=sumX0+c*(sumW+sumGapX), y=sumY0+r*(sumH+sumGapY);
+    const items=prevRisks.filter(x=>x.risk_categories?.id===cat.id);
+    const a=items.length, v=cViol(items);
+    const d=cDone(items), o=cOpen(items);
+    const dr=rPct(d,d+o);
+    const noData=v===0;
+    s13.addShape('roundRect',{x,y,w:sumW,h:sumH,fill:{color:RPT.SURF},line:{color:RPT.BORDER,width:0.75},rectRadius:0.06});
+    s13.addShape('rect',{x:x,y:y,w:0.1,h:sumH,fill:{color:noData?RPT.TEXT3:RPT.RED},line:{type:'none'}});
+    s13.addText(cat.name,{x:x+0.25,y:y+0.18,w:sumW-0.4,h:0.35,fontSize:13,bold:true,color:RPT.NAVY,fontFace:RPT.FONT});
+    if(noData){
+      s13.addText('위반 데이터 없음',{x:x+0.25,y:y+0.65,w:sumW-0.4,h:0.3,fontSize:9,color:RPT.TEXT3,fontFace:RPT.FONT,italic:true});
+    }
+    // 4 라인: 전체 / 위반 / 완료율 / 조치중
+    const lines=[
+      {l:'전체 모니터링', v:`${a}건`,                c:RPT.TEXT},
+      {l:'위반 건수',     v:`${v}건${a?` (${rPct(v,a)}%)`:''}`, c:v?RPT.RISK_C:RPT.TEXT3, b:!!v},
+      {l:'처리 완료율',   v:`${dr}%`,                c:RPT.SAFE_C, b:dr>0},
+      {l:'조치중',        v:`${o}건`,                c:o?RPT.RISK_C:RPT.TEXT3, b:!!o}
+    ];
+    lines.forEach((ln,li)=>{
+      const ly=y+0.95+li*0.4;
+      s13.addText(ln.l,{x:x+0.25,y:ly,w:(sumW-0.4)*0.55,h:0.32,fontSize:9,color:RPT.TEXT2,fontFace:RPT.FONT});
+      s13.addText(ln.v,{x:x+0.25+(sumW-0.4)*0.55,y:ly,w:(sumW-0.4)*0.45,h:0.32,fontSize:11,bold:ln.b!==false,color:ln.c,fontFace:RPT.FONT,align:'right'});
+    });
+  });
+
+  // ── 슬라이드 14~: 계열사별 영역 매트릭스 (전월) ─
+  divs.forEach(dv=>{
+    const sl=pptx.addSlide(); head(sl, `${dv.name} 영역별 모니터링 현황`, `${prevLabel} (전월)`);
+    const items=prevRisks.filter(r=>r.divisions?.id===dv.id);
+    const a=items.length, v=cViol(items);
+    const d=cDone(items), o=cOpen(items);
+    const dr=rPct(d,d+o);
+
+    // 상단 KPI 4개
+    const kY=1.75, kH=1.1, kGap=0.15, kW=(12.53-kGap*3)/4;
+    const cards=[
+      {ttl:'전월 모니터링', big:`${a}건`,             sub:`위반 ${v}건${a?` (${rPct(v,a)}%)`:''}`, c:RPT.NAVY},
+      {ttl:'위반 건수',     big:`${v}건`,             sub:`전체 대비 ${a?rPct(v,a):0}%`,           c:RPT.RISK_C},
+      {ttl:'처리 완료율',   big:`${dr}%`,             sub:`완료 ${d} / 위반 ${d+o}건`,             c:RPT.SAFE_C},
+      {ttl:'조치중',        big:`${o}건`,             sub:'위반(처리중) 상태',                      c:RPT.RISK_C}
+    ];
+    cards.forEach((k,i)=>{
+      const x=0.4+i*(kW+kGap);
+      sl.addShape('roundRect',{x,y:kY,w:kW,h:kH,fill:{color:RPT.SURF},line:{color:RPT.BORDER,width:0.75},rectRadius:0.06});
+      sl.addShape('rect',{x:x,y:kY,w:0.08,h:kH,fill:{color:k.c},line:{type:'none'}});
+      sl.addText(k.ttl,{x:x+0.2,y:kY+0.1,w:kW-0.3,h:0.3,fontSize:9,bold:true,color:RPT.TEXT2,fontFace:RPT.FONT});
+      sl.addText(k.big,{x:x+0.2,y:kY+0.4,w:kW-0.3,h:0.5,fontSize:20,bold:true,color:k.c,fontFace:RPT.FONT});
+      sl.addText(k.sub,{x:x+0.2,y:kY+0.78,w:kW-0.3,h:0.28,fontSize:9,color:RPT.TEXT2,fontFace:RPT.FONT});
+    });
+
+    // 영역별 표 (카테고리 × 전체/위반)
+    const rows=[[
+      {text:'영역',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:10}},
+      {text:'전체',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:10}},
+      {text:'위반',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:10}}
+    ]];
+    let sa=0, sv=0;
+    allCats.forEach((c,ri)=>{
+      const cell=items.filter(x=>x.risk_categories?.id===c.id);
+      const ca=cell.length, cv=cViol(cell);
+      sa+=ca; sv+=cv;
+      rows.push([
+        {text:c.name,options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'left',fontSize:10}},
+        {text:String(dash(ca)),options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'center',fontSize:10}},
+        {text:String(dash(cv)),options:{color:cv?RPT.RISK_C:RPT.TEXT3,bold:!!cv,fill:ri%2?RPT.BG:RPT.SURF,align:'center',fontSize:10}}
+      ]);
+    });
+    rows.push([
+      {text:'합계',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:10}},
+      {text:String(dash(sa)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:10}},
+      {text:String(dash(sv)),options:{bold:true,color:sv?'FFE4E8':'D9DBE5',fill:RPT.NAVY2,align:'center',fontSize:10}}
+    ]);
+    sl.addTable(rows,{x:0.4,y:3.1,w:12.53,colW:[7.5,2.5,2.53],border:{type:'solid',pt:0.5,color:RPT.BORDER},rowH:0.32,fontFace:RPT.FONT});
+  });
+
+  const ym=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}`;
+  const fname=`이랜드그룹_리스크관리현황_${divFilter?divFilter+'_':''}${ym}.pptx`;
+  await pptx.writeFile({fileName:fname});
+  showToast('보고서 다운로드 완료');
+}
+
 function dlBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
 
 // ── Mock 데이터 도구 (검토용) ───────────────
