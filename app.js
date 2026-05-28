@@ -9,10 +9,53 @@ let activeDiv='', editId=null;
 let tChart=null, dChart=null;
 let lPage=1; const PER=20;
 let rptFmt='ppt';
+let currentUser=null; // 로그인 사용자 프로필 (인증 게이트 통과 후 채워짐)
+const ADMIN_EMAIL='gabeenya@gmail.com';
 const CAT_COLORS=['#7a9bc1','#d99893','#d9b683','#94c4a5','#b3a4cc','#92b8d1','#c997b5','#a8aeba'];
+
+// ── 인증 게이트 ────────────────────────────
+// 미로그인/미승인 시 login.html로 보냄. 통과 시 currentUser 세팅.
+async function authGate(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session){ location.replace('login.html'); return false; }
+  const {data:profile,error} = await sb.from('profiles')
+    .select('*').eq('id',session.user.id).maybeSingle();
+  if(error||!profile){
+    await sb.auth.signOut();
+    location.replace('login.html');
+    return false;
+  }
+  if(!profile.approved){
+    await sb.auth.signOut();
+    location.replace('login.html?pending=1');
+    return false;
+  }
+  currentUser = profile;
+  // 세션 만료/로그아웃 발생 시 자동 이동
+  sb.auth.onAuthStateChange((evt,sess)=>{
+    if(evt==='SIGNED_OUT'||!sess) location.replace('login.html');
+  });
+  return true;
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  location.replace('login.html');
+}
+
+// 사이드바 사용자 정보·관리자 메뉴 표시
+function renderUserBox(){
+  if(!currentUser) return;
+  const nm=document.getElementById('sb-user-name'); if(nm) nm.textContent=currentUser.full_name;
+  const sub=document.getElementById('sb-user-sub'); if(sub) sub.textContent=`${currentUser.division} · ${currentUser.department}`;
+  const adm=document.getElementById('nav-admin');
+  if(adm) adm.style.display=(currentUser.email===ADMIN_EMAIL)?'':'none';
+}
 
 // ── 초기화 ─────────────────────────────────
 async function init(){
+  if(!(await authGate())) return; // 미로그인/미승인은 여기서 종료
+  renderUserBox();
   const now=new Date();
   document.getElementById('today-date').textContent=
     `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
@@ -580,7 +623,7 @@ function showPage(name,btn){
   if(btn) btn.classList.add('on');
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
   document.getElementById('page-'+name).classList.add('on');
-  const crumbs={'dashboard':'대시보드','list':'모니터링 리스트','input':'데이터 입력'};
+  const crumbs={'dashboard':'대시보드','list':'모니터링 리스트','input':'데이터 입력','admin':'회원 관리'};
   document.getElementById('page-crumb').textContent=crumbs[name]||name;
   // 대시보드 페이지일 때만 상단 필터 표시
   const fbar=document.getElementById('main-fbar');
@@ -588,6 +631,65 @@ function showPage(name,btn){
   if(name==='dashboard') updateFbarSelects();
   if(name==='list') renderList();
   if(name==='input') renderRecentBody();
+  if(name==='admin') renderAdmin();
+}
+
+// ── 회원 관리 (관리자 전용) ─────────────────
+async function renderAdmin(){
+  if(!currentUser || currentUser.email!==ADMIN_EMAIL){
+    showToast('관리자 권한이 필요합니다'); showPage('dashboard',null); return;
+  }
+  const {data,error}=await sb.from('profiles').select('*').order('created_at',{ascending:false});
+  if(error){ showToast('회원 목록 조회 실패: '+error.message); return; }
+  const pending=data.filter(p=>!p.approved);
+  const approved=data.filter(p=>p.approved);
+  document.getElementById('admin-pending-cnt').textContent=`${pending.length}건`;
+  document.getElementById('admin-approved-cnt').textContent=`${approved.length}건`;
+  const fmt=s=>s?s.slice(0,10).replace(/-/g,'.'):'-';
+  const pb=document.getElementById('admin-pending-body');
+  pb.innerHTML=pending.length?pending.map(p=>`
+    <tr>
+      <td style="white-space:nowrap">${fmt(p.created_at)}</td>
+      <td>${escapeHTML(p.full_name)}</td>
+      <td>${escapeHTML(p.emp_no)}</td>
+      <td>${escapeHTML(p.division)}</td>
+      <td>${escapeHTML(p.department)}</td>
+      <td>${escapeHTML(p.email)}</td>
+      <td><button class="btn btn-red btn-sm" onclick="approveUser('${p.id}')">승인</button></td>
+    </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">대기 중인 신청 없음</td></tr>';
+  const ab=document.getElementById('admin-approved-body');
+  ab.innerHTML=approved.length?approved.map(p=>{
+    const isAdmin=p.email===ADMIN_EMAIL;
+    return `<tr>
+      <td style="white-space:nowrap">${fmt(p.created_at)}</td>
+      <td>${escapeHTML(p.full_name)}${isAdmin?' <span class="badge b-위험" style="font-size:9px;padding:1px 6px">관리자</span>':''}</td>
+      <td>${escapeHTML(p.emp_no)}</td>
+      <td>${escapeHTML(p.division)}</td>
+      <td>${escapeHTML(p.department)}</td>
+      <td>${escapeHTML(p.email)}</td>
+      <td>${isAdmin?'<span style="color:var(--text3);font-size:11px">-</span>':`<button class="btn btn-sm" onclick="revokeUser('${p.id}')">승인 해제</button>`}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">승인된 회원 없음</td></tr>';
+}
+
+async function approveUser(uid){
+  const {error}=await sb.from('profiles').update({approved:true}).eq('id',uid);
+  if(error){ showToast('승인 실패: '+error.message); return; }
+  showToast('승인 완료');
+  renderAdmin();
+}
+
+async function revokeUser(uid){
+  if(!confirm('이 회원의 승인을 해제하시겠습니까?\n(다시 로그인하려면 재승인 필요)')) return;
+  const {error}=await sb.from('profiles').update({approved:false}).eq('id',uid);
+  if(error){ showToast('해제 실패: '+error.message); return; }
+  showToast('승인 해제 완료');
+  renderAdmin();
+}
+
+function escapeHTML(s){
+  if(s==null) return '';
+  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // ── 상태 선택 ──────────────────────────────

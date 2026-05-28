@@ -40,6 +40,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       보고서 다운로드
     </button>
+    <button class="mgmt-item" id="nav-admin" style="display:none" onclick="showPage('admin',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      회원 관리
+    </button>
   </div>
 
   <div class="sb-divider"></div>
@@ -68,6 +72,15 @@
   </div>
 
   <div class="sb-foot">
+    <div class="sb-user">
+      <div class="sb-user-info">
+        <div class="sb-user-name" id="sb-user-name">사용자</div>
+        <div class="sb-user-sub" id="sb-user-sub">-</div>
+      </div>
+      <button class="sb-logout" onclick="doLogout()" title="로그아웃">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
     <div class="sb-foot-txt" id="conn-status">연결 중...</div>
   </div>
 </aside>
@@ -423,6 +436,43 @@
         <button class="btn btn-red" id="mock-gen-btn" onclick="generateMockData()">987건 생성</button>
         <button class="btn" id="mock-del-btn" onclick="deleteMockData()">Mock 데이터 모두 삭제</button>
         <span style="font-size:11px;color:var(--text2);margin-left:4px">계열사 · 브랜드 · 대분류 · 등록일 · 상태가 골고루 분포되도록 생성</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 회원 관리 (관리자 전용) ════ -->
+  <div class="content page" id="page-admin">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-hd">
+        <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">가입 신청 (승인 대기)</span></div>
+        <span class="card-hint" id="admin-pending-cnt">0건</span>
+      </div>
+      <div class="card-bd" style="padding:0">
+        <div style="overflow:auto">
+          <table class="tbl">
+            <thead><tr>
+              <th>신청일</th><th>성명</th><th>사번</th><th>계열사</th><th>부서</th><th>이메일</th><th>작업</th>
+            </tr></thead>
+            <tbody id="admin-pending-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">승인된 회원</span></div>
+        <span class="card-hint" id="admin-approved-cnt">0건</span>
+      </div>
+      <div class="card-bd" style="padding:0">
+        <div style="overflow:auto">
+          <table class="tbl">
+            <thead><tr>
+              <th>승인일</th><th>성명</th><th>사번</th><th>계열사</th><th>부서</th><th>이메일</th><th>작업</th>
+            </tr></thead>
+            <tbody id="admin-approved-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
