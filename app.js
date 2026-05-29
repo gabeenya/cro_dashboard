@@ -1696,11 +1696,11 @@ async function downloadPPT(){
   // 계열사별 컬럼 (가로 배치), 각 컬럼 안에 브랜드 순위
   const s4=pptx.addSlide(); head(s4,'계열사별 브랜드 순위','위반+완료 건수 적은 순(위) → 많은 순(아래)');
   const cols=divs;
-  const slideW=13.33, margin=0.35, gap=0.12;
-  const colW = (slideW - margin*2 - gap*(cols.length-1)) / cols.length;
+  const slideW=13.33, margin=0.35, colGap=0.12;
+  const colW = (slideW - margin*2 - colGap*(cols.length-1)) / cols.length;
   const startY=1.85;
   cols.forEach((dv,ci)=>{
-    const x = margin + ci*(colW+gap);
+    const x = margin + ci*(colW+colGap);
     // 컬럼 헤더 = 계열사명
     const hdrRow=[[
       {text:dv.name,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}}
