@@ -217,10 +217,15 @@ function getFiltered(){
   const brand=document.getElementById('f-brand').value;
   const cat=document.getElementById('f-cat').value;
   const grade=document.getElementById('f-grade').value;
+  // 매장 필터: 유통 + 리테일일 때만 적용
+  const brandObj=allBrands.find(b=>b.id==brand);
+  const storeApplies = activeDiv==='유통' && brandObj?.name==='리테일';
+  const store = storeApplies ? document.getElementById('f-store')?.value : '';
   return allRisks.filter(r=>{
     if(activeDiv && r.divisions?.name!==activeDiv) return false;
     if(!activeDiv && div && r.divisions?.id!=div) return false;
     if(brand && r.brands?.id!=brand) return false;
+    if(store && r.store_id!=store) return false;
     if(cat   && r.risk_categories?.id!=cat) return false;
     if(grade && r.grade!==grade) return false;
     return true;
@@ -233,6 +238,24 @@ function updateFbarSelects(){
   set('f-div',main);
   set('f-brand',!main);
   set('f-grade',!main);
+  // 매장 필터: 유통 + 리테일 선택 시만 노출
+  const brandVal=document.getElementById('f-brand')?.value;
+  const brandObj=allBrands.find(b=>b.id==brandVal);
+  const showStore = activeDiv==='유통' && brandObj?.name==='리테일';
+  set('f-store', showStore);
+  const fs=document.getElementById('f-store');
+  if(fs){
+    if(showStore){
+      // 옵션이 비어있으면 채움 (전체 매장 옵션 외 0개일 때만)
+      if(fs.options.length<=1){
+        const divObj=allDiv.find(d=>d.name==='유통');
+        const stores=divObj?allStores.filter(s=>s.division_id===divObj.id):[];
+        fs.innerHTML='<option value="">전체 매장</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+      }
+    } else {
+      fs.value='';
+    }
+  }
 }
 function applyFilter(){renderDash(getFiltered());}
 
@@ -1038,6 +1061,9 @@ async function onPDiv(){
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
   // 브랜드가 초기화되므로 매장 드롭다운도 초기화
   onPBrand();
+  // 선택한 계열사의 최근 입력 내역 표시
+  inlineEditId=null;
+  renderRecentBody();
 }
 function onPBrand(){
   const divId=document.getElementById('p-div').value;
@@ -1054,11 +1080,11 @@ function toggleStoreDropdown(prefix, divObj, brandObj, divId){
   if(divObj?.name==='유통' && brandObj?.name==='리테일'){
     const stores=allStores.filter(s=>s.division_id==divId);
     sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-    wrap.style.display='';
+    wrap.classList.remove('hidden-fg');
   } else {
     sel.innerHTML='<option value="">선택 (선택사항)</option>';
     sel.value='';
-    wrap.style.display='none';
+    wrap.classList.add('hidden-fg');
   }
 }
 function onPCat(){
@@ -1075,7 +1101,7 @@ function resetInput(){
   document.getElementById('p-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('p-brand').innerHTML='<option value="">계열사 먼저 선택</option>';
   document.getElementById('p-sub').innerHTML='<option value="">없음</option>';
-  const psw=document.getElementById('p-store-wrap'); if(psw) psw.style.display='none';
+  const psw=document.getElementById('p-store-wrap'); if(psw) psw.classList.add('hidden-fg');
   document.getElementById('p-state').value='';
   ['모니터링','위반','완료'].forEach(s=>{
     const el=document.getElementById('ps-'+s); if(el) el.className='state-opt';
@@ -1392,27 +1418,213 @@ async function confirmBulkUpload(){
   await loadAll();
 }
 
+// ── 인라인 수정 (최근 입력 내역) ─────────────────
+let inlineEditId=null;
+
 function renderRecentBody(){
-  const recent=allRisks.slice(0,10);
+  const card=document.getElementById('recent-card');
+  const selDivId=document.getElementById('p-div')?.value;
+  if(!card) return;
+  if(!selDivId){
+    // 계열사 미선택 시 카드 자체 숨김
+    card.style.display='none';
+    inlineEditId=null;
+    return;
+  }
+  card.style.display='';
+  const divIdNum=parseInt(selDivId);
+  const divObj=allDiv.find(d=>d.id===divIdNum);
+  const hint=document.getElementById('recent-hint');
+  if(hint) hint.textContent=`${divObj?.name||''} 최근 10건`;
+
+  const filtered=allRisks.filter(r=>r.divisions?.id===divIdNum).slice(0,10);
   const b=document.getElementById('recent-body');
-  if(!recent.length){b.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';return;}
-  b.innerHTML=recent.map(r=>{
+  if(!filtered.length){
+    b.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+    return;
+  }
+  let html='';
+  filtered.forEach(r=>{
     const viol=r.violation_count??'-';
     const mon=r.monitoring_count??'-';
     const rate=(r.monitoring_count&&r.violation_count!=null)
       ?Math.round(r.violation_count/r.monitoring_count*100)+'%':'-';
-    return `<tr onclick="openEdit('${r.id}')">
+    const isEd=inlineEditId===r.id;
+    html+=`<tr class="${isEd?'ier-active':''}" onclick="startInlineEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
-      <td>${r.title}</td>
+      <td>${escapeHTML(r.title||'')}</td>
       <td>${stateBadge(r.item_state)}</td>
       <td style="text-align:center">${viol}</td>
       <td style="text-align:center">${mon}</td>
       <td style="text-align:center;font-weight:700;color:var(--위험-c)">${rate}</td>
       <td>${gradeBadge(r.grade)}</td>
-      <td><button class="btn btn-sm" onclick="event.stopPropagation();openEdit('${r.id}')">수정</button></td>
+      <td><button class="btn btn-sm" onclick="event.stopPropagation();startInlineEdit('${r.id}')">${isEd?'닫기':'수정'}</button></td>
     </tr>`;
-  }).join('');
+    if(isEd) html+=buildInlineEditRow(r);
+  });
+  b.innerHTML=html;
+}
+
+function buildInlineEditRow(r){
+  const stOpts=['모니터링','위반','완료'];
+  const curState=r.item_state||'';
+  const subs=allSubs.filter(s=>s.category_id===r.risk_categories?.id);
+  const brands=allBrands.filter(b=>b.division_id===r.divisions?.id);
+  const showStore=r.divisions?.name==='유통' && r.brands?.name==='리테일';
+  const stores=showStore?allStores.filter(s=>s.division_id===r.divisions?.id):[];
+  const curStoreId=r.store_id||'';
+  return `<tr class="ier-row"><td colspan="10">
+    <div class="ier-form">
+      <div class="fg">
+        <label class="flb">계열사 *</label>
+        <select class="fc" id="ie-div" onchange="onIEDiv()">
+          ${allDiv.map(d=>`<option value="${d.id}" ${d.id===r.divisions?.id?'selected':''}>${d.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg">
+        <label class="flb">브랜드/조직 *</label>
+        <select class="fc" id="ie-brand" onchange="onIEBrand()">
+          <option value="">선택</option>
+          ${brands.map(b=>`<option value="${b.id}" ${b.id===r.brands?.id?'selected':''}>${b.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg ${showStore?'':'hidden-fg'}" id="ie-store-wrap">
+        <label class="flb">매장 (유통 전용)</label>
+        <select class="fc" id="ie-store">
+          <option value="">선택 (선택사항)</option>
+          ${stores.map(s=>`<option value="${s.id}" ${s.id==curStoreId?'selected':''}>${s.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg">
+        <label class="flb">등록일 *</label>
+        <input type="date" class="fc" id="ie-date" value="${r.registered_at||''}">
+      </div>
+      <div class="fg">
+        <label class="flb">대분류 *</label>
+        <select class="fc" id="ie-cat" onchange="onIECat()">
+          <option value="">선택</option>
+          ${allCats.map(c=>`<option value="${c.id}" ${c.id===r.risk_categories?.id?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg">
+        <label class="flb">중분류</label>
+        <select class="fc" id="ie-sub">
+          <option value="">없음</option>
+          ${subs.map(s=>`<option value="${s.id}" ${s.id===r.risk_subcategories?.id?'selected':''}>${s.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg full">
+        <label class="flb">상태 *</label>
+        <div class="fc-state">
+          ${stOpts.map(s=>`<button type="button" class="state-opt ${s===curState?'sel-'+s:''}" id="ies-${s}" onclick="selectStateInline('${s}')">${s}</button>`).join('')}
+        </div>
+        <input type="hidden" id="ie-state" value="${curState}">
+      </div>
+      <div class="fg"><label class="flb">위반건수</label><input type="number" class="fc" id="ie-viol" value="${r.violation_count??''}" min="0"></div>
+      <div class="fg"><label class="flb">모니터링건수</label><input type="number" class="fc" id="ie-mon" value="${r.monitoring_count??''}" min="0"></div>
+      <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="ie-title" value="${escapeHTML(r.title||'')}"></div>
+      <div class="fg full"><label class="flb">현황</label><textarea class="fc" id="ie-status">${escapeHTML(r.status||'')}</textarea></div>
+      <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="ie-note">${escapeHTML(r.note||'')}</textarea></div>
+      <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="deleteInline('${r.id}')">삭제</button>
+        <button class="btn btn-sm" onclick="cancelInline()">취소</button>
+        <button class="btn btn-red btn-sm" id="ie-save-btn" onclick="saveInline('${r.id}')">저장</button>
+      </div>
+    </div>
+  </td></tr>`;
+}
+
+function startInlineEdit(id){
+  inlineEditId=(inlineEditId===id)?null:id;
+  renderRecentBody();
+}
+function cancelInline(){
+  inlineEditId=null;
+  renderRecentBody();
+}
+function onIEDiv(){
+  const divId=document.getElementById('ie-div').value;
+  const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
+  const el=document.getElementById('ie-brand');
+  el.innerHTML='<option value="">선택</option>'+brands.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  toggleIEStore();
+}
+function onIEBrand(){ toggleIEStore(); }
+function toggleIEStore(){
+  const divId=document.getElementById('ie-div').value;
+  const brandId=document.getElementById('ie-brand').value;
+  const divObj=allDiv.find(d=>d.id==divId);
+  const brandObj=allBrands.find(b=>b.id==brandId);
+  const wrap=document.getElementById('ie-store-wrap');
+  const sel=document.getElementById('ie-store');
+  if(!wrap||!sel) return;
+  if(divObj?.name==='유통' && brandObj?.name==='리테일'){
+    const stores=allStores.filter(s=>s.division_id==divId);
+    sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    wrap.classList.remove('hidden-fg');
+  } else {
+    sel.innerHTML='<option value="">선택 (선택사항)</option>';
+    sel.value='';
+    wrap.classList.add('hidden-fg');
+  }
+}
+function onIECat(){
+  const catId=document.getElementById('ie-cat').value;
+  const subs=allSubs.filter(s=>s.category_id==catId);
+  const el=document.getElementById('ie-sub');
+  el.innerHTML='<option value="">없음</option>'+subs.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+}
+function selectStateInline(val){
+  document.getElementById('ie-state').value=val;
+  ['모니터링','위반','완료'].forEach(s=>{
+    const el=document.getElementById('ies-'+s);
+    if(el) el.className='state-opt'+(s===val?' sel-'+s:'');
+  });
+}
+async function saveInline(id){
+  const divId=document.getElementById('ie-div').value;
+  const brandId=document.getElementById('ie-brand').value;
+  const catId=document.getElementById('ie-cat').value;
+  const subId=document.getElementById('ie-sub').value;
+  const storeId=document.getElementById('ie-store')?.value;
+  const state=document.getElementById('ie-state').value;
+  const date=document.getElementById('ie-date').value;
+  const title=document.getElementById('ie-title').value.trim();
+  const status=document.getElementById('ie-status').value.trim();
+  const note=document.getElementById('ie-note').value.trim();
+  const viol=document.getElementById('ie-viol').value;
+  const mon=document.getElementById('ie-mon').value;
+  if(!divId||!brandId||!catId||!state||!date||!title){showToast('필수 항목(*)을 입력해주세요');return;}
+  const btn=document.getElementById('ie-save-btn');
+  if(btn){btn.textContent='저장 중...'; btn.disabled=true;}
+  const {error}=await sb.from('risks').update({
+    division_id:parseInt(divId),brand_id:parseInt(brandId),category_id:parseInt(catId),
+    subcategory_id:subId?parseInt(subId):null,
+    store_id:storeId?parseInt(storeId):null,
+    grade:'안전',item_state:state,registered_at:date,title,
+    status:status||null,note:note||null,
+    violation_count:viol?parseInt(viol):null,
+    monitoring_count:mon?parseInt(mon):null
+  }).eq('id',id);
+  if(error){
+    if(btn){btn.textContent='저장'; btn.disabled=false;}
+    showToast('저장 실패: '+error.message);
+    return;
+  }
+  showToast('수정 완료');
+  inlineEditId=null;
+  await loadAll();
+  renderRecentBody();
+}
+async function deleteInline(id){
+  if(!confirm('정말 삭제하시겠어요?')) return;
+  const {error}=await sb.from('risks').delete().eq('id',id);
+  if(error){showToast('삭제 실패: '+error.message);return;}
+  showToast('삭제 완료');
+  inlineEditId=null;
+  await loadAll();
+  renderRecentBody();
 }
 
 // ── 수정 모달 ──────────────────────────────

@@ -130,6 +130,7 @@
     <span class="fbar-label">필터</span>
     <select id="f-div" onchange="applyFilter()"><option value="">전체 계열사</option></select>
     <select id="f-brand" onchange="applyFilter()"><option value="">전체 브랜드/조직</option></select>
+    <select id="f-store" onchange="applyFilter()" style="display:none"><option value="">전체 매장</option></select>
     <select id="f-cat" onchange="applyFilter()"><option value="">전체 대분류</option></select>
     <select id="f-grade" onchange="applyFilter()">
       <option value="">전체 등급</option>
@@ -451,10 +452,10 @@
         <div class="fgrid">
           <div class="fg"><label class="flb">계열사 *</label><select class="fc" id="p-div" onchange="onPDiv()"><option value="">선택</option></select></div>
           <div class="fg"><label class="flb">브랜드/조직 *</label><select class="fc" id="p-brand" onchange="onPBrand()"><option value="">계열사 먼저 선택</option></select></div>
+          <div class="fg hidden-fg" id="p-store-wrap"><label class="flb">매장 (유통 전용)</label><select class="fc" id="p-store"><option value="">선택 (선택사항)</option></select></div>
+          <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="p-date"></div>
           <div class="fg"><label class="flb">대분류 *</label><select class="fc" id="p-cat" onchange="onPCat()"><option value="">선택</option></select></div>
           <div class="fg"><label class="flb">중분류</label><select class="fc" id="p-sub"><option value="">없음</option></select></div>
-          <div class="fg" id="p-store-wrap" style="display:none"><label class="flb">매장 (유통 전용)</label><select class="fc" id="p-store"><option value="">선택 (선택사항)</option></select></div>
-          <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="p-date"></div>
           <!-- 상태 선택 (모니터링/위반/완료) -->
           <div class="fg full">
             <label class="flb">상태 *</label>
@@ -479,10 +480,10 @@
       </div>
     </div>
 
-    <div class="card" style="max-width:760px;margin:12px auto 0">
+    <div class="card" id="recent-card" style="max-width:760px;margin:12px auto 0;display:none">
       <div class="card-hd">
         <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">최근 입력 내역</span></div>
-        <span class="card-hint">최근 10건</span>
+        <span class="card-hint" id="recent-hint">선택한 계열사의 최근 10건</span>
       </div>
       <div style="overflow-x:auto">
         <table class="tbl" style="min-width:620px">
@@ -622,7 +623,7 @@
         <div class="fg"><label class="flb">브랜드/조직 *</label><select class="fc" id="m-brand" onchange="onMBrand()"><option value="">계열사 먼저 선택</option></select></div>
         <div class="fg"><label class="flb">대분류 *</label><select class="fc" id="m-cat" onchange="onMCat()"><option value="">선택</option></select></div>
         <div class="fg"><label class="flb">중분류</label><select class="fc" id="m-sub"><option value="">없음</option></select></div>
-        <div class="fg" id="m-store-wrap" style="display:none"><label class="flb">매장 (유통 전용)</label><select class="fc" id="m-store"><option value="">선택 (선택사항)</option></select></div>
+        <div class="fg hidden-fg" id="m-store-wrap"><label class="flb">매장 (유통 전용)</label><select class="fc" id="m-store"><option value="">선택 (선택사항)</option></select></div>
         <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="m-date"></div>
         <div class="fg full">
           <label class="flb">상태 *</label>

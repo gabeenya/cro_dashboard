@@ -359,6 +359,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 .fg{display:flex;flex-direction:column;gap:4px}
 .fg.full{grid-column:1/-1}
+/* 매장 등 조건부 셀이 숨겨질 때 다음 .fg가 행 전체를 차지 (자동 재배치 방지) */
+.hidden-fg{display:none}
+.hidden-fg + .fg{grid-column:1/-1}
+
+/* ════ 인라인 수정 행 (최근 입력 내역) ════ */
+.ier-active td{background:var(--red-light)!important;font-weight:600}
+.ier-row > td{
+  background:var(--bg);padding:16px 18px;
+  border-left:3px solid var(--red);border-bottom:1px solid var(--border);
+}
+.ier-form{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.ier-form .fg.full{grid-column:1/-1}
 .fg.span3{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px}
 .flb{font-size:10px;font-weight:700;color:var(--text2);letter-spacing:0.3px}
 .fc{
