@@ -1032,19 +1032,26 @@ function selectState(prefix,val){
 // ── 데이터 입력 ─────────────────────────────
 async function onPDiv(){
   const divId=document.getElementById('p-div').value;
-  const divObj=allDiv.find(d=>d.id==divId);
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('p-brand');
   el.innerHTML='<option value="">선택</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
-  // 매장 드롭다운 (유통만)
-  toggleStoreDropdown('p',divObj,divId);
+  // 브랜드가 초기화되므로 매장 드롭다운도 초기화
+  onPBrand();
 }
-function toggleStoreDropdown(prefix, divObj, divId){
+function onPBrand(){
+  const divId=document.getElementById('p-div').value;
+  const brandId=document.getElementById('p-brand').value;
+  const divObj=allDiv.find(d=>d.id==divId);
+  const brandObj=allBrands.find(b=>b.id==brandId);
+  toggleStoreDropdown('p',divObj,brandObj,divId);
+}
+// 매장(소분류)은 '유통' + '리테일' 조합에서만 노출
+function toggleStoreDropdown(prefix, divObj, brandObj, divId){
   const wrap=document.getElementById(`${prefix}-store-wrap`);
   const sel=document.getElementById(`${prefix}-store`);
   if(!wrap||!sel) return;
-  if(divObj?.name==='유통'){
+  if(divObj?.name==='유통' && brandObj?.name==='리테일'){
     const stores=allStores.filter(s=>s.division_id==divId);
     sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
     wrap.style.display='';
@@ -1415,6 +1422,7 @@ function openEdit(id){
   document.getElementById('m-div').value=r.divisions?.id||'';
   onMDiv().then(()=>{
     document.getElementById('m-brand').value=r.brands?.id||'';
+    onMBrand();
     const ms=document.getElementById('m-store'); if(ms && r.store_id) ms.value=r.store_id;
   });
   document.getElementById('m-cat').value=r.risk_categories?.id||'';
@@ -1435,13 +1443,18 @@ function closeModal(){document.getElementById('mo-ov').classList.remove('open');
 function handleOvClick(e){if(e.target.id==='mo-ov') closeModal();}
 async function onMDiv(){
   const divId=document.getElementById('m-div').value;
-  const divObj=allDiv.find(d=>d.id==divId);
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('m-brand');
   el.innerHTML='<option value="">선택</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
-  // 매장 드롭다운 (유통만)
-  toggleStoreDropdown('m',divObj,divId);
+  onMBrand();
+}
+function onMBrand(){
+  const divId=document.getElementById('m-div').value;
+  const brandId=document.getElementById('m-brand').value;
+  const divObj=allDiv.find(d=>d.id==divId);
+  const brandObj=allBrands.find(b=>b.id==brandId);
+  toggleStoreDropdown('m',divObj,brandObj,divId);
 }
 function onMCat(){
   const catId=document.getElementById('m-cat').value;
