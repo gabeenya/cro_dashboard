@@ -4,7 +4,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Ny1yoy5La-q9Tw7jT6pstg_SV0_fb1a';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── 상태 ───────────────────────────────────
-let allDiv=[], allBrands=[], allCats=[], allSubs=[], allRisks=[];
+let allDiv=[], allBrands=[], allCats=[], allSubs=[], allStores=[], allRisks=[];
 let activeDiv='', editId=null;
 let tChart=null, dChart=null;
 let lPage=1; const PER=20;
@@ -92,13 +92,14 @@ async function init(){
 }
 
 async function loadMaster(){
-  const [d,b,c,s]=await Promise.all([
+  const [d,b,c,s,st]=await Promise.all([
     sb.from('divisions').select('*').order('sort_order'),
     sb.from('brands').select('*').order('sort_order'),
     sb.from('risk_categories').select('*').order('sort_order'),
     sb.from('risk_subcategories').select('*').order('sort_order'),
+    sb.from('stores').select('*').order('sort_order').then(r=>r,()=>({data:[]})),
   ]);
-  allDiv=d.data||[]; allBrands=b.data||[]; allCats=c.data||[]; allSubs=s.data||[];
+  allDiv=d.data||[]; allBrands=b.data||[]; allCats=c.data||[]; allSubs=s.data||[]; allStores=st.data||[];
   fillSel('f-div',allDiv,'전체 계열사');
   fillSel('lf-div',allDiv,'전체 계열사');
   fillSel('f-cat',allCats,'전체 대분류');
@@ -121,9 +122,10 @@ async function loadAll(){
   document.getElementById('conn-status').textContent='로딩 중...';
   const {data,error}=await sb.from('risks').select(`
     id,registered_at,title,status,grade,note,created_at,
-    item_state,violation_count,monitoring_count,
+    item_state,violation_count,monitoring_count,store_id,
     divisions(id,name),brands(id,name),
-    risk_categories(id,name),risk_subcategories(id,name)
+    risk_categories(id,name),risk_subcategories(id,name),
+    stores(id,name)
   `).order('created_at',{ascending:false}).range(0,49999);
   if(error){document.getElementById('conn-status').textContent='연결 오류';showToast('데이터 로드 실패');return;}
   allRisks=data;
@@ -1030,10 +1032,27 @@ function selectState(prefix,val){
 // ── 데이터 입력 ─────────────────────────────
 async function onPDiv(){
   const divId=document.getElementById('p-div').value;
+  const divObj=allDiv.find(d=>d.id==divId);
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('p-brand');
   el.innerHTML='<option value="">선택</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
+  // 매장 드롭다운 (유통만)
+  toggleStoreDropdown('p',divObj,divId);
+}
+function toggleStoreDropdown(prefix, divObj, divId){
+  const wrap=document.getElementById(`${prefix}-store-wrap`);
+  const sel=document.getElementById(`${prefix}-store`);
+  if(!wrap||!sel) return;
+  if(divObj?.name==='유통'){
+    const stores=allStores.filter(s=>s.division_id==divId);
+    sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    wrap.style.display='';
+  } else {
+    sel.innerHTML='<option value="">선택 (선택사항)</option>';
+    sel.value='';
+    wrap.style.display='none';
+  }
 }
 function onPCat(){
   const catId=document.getElementById('p-cat').value;
@@ -1043,12 +1062,13 @@ function onPCat(){
   subs.forEach(s=>{el.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});
 }
 function resetInput(){
-  ['p-div','p-brand','p-cat','p-sub'].forEach(i=>document.getElementById(i).value='');
+  ['p-div','p-brand','p-cat','p-sub','p-store'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   ['p-title','p-status','p-note'].forEach(i=>document.getElementById(i).value='');
   ['p-viol','p-mon'].forEach(i=>document.getElementById(i).value='');
   document.getElementById('p-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('p-brand').innerHTML='<option value="">계열사 먼저 선택</option>';
   document.getElementById('p-sub').innerHTML='<option value="">없음</option>';
+  const psw=document.getElementById('p-store-wrap'); if(psw) psw.style.display='none';
   document.getElementById('p-state').value='';
   ['모니터링','위반','완료'].forEach(s=>{
     const el=document.getElementById('ps-'+s); if(el) el.className='state-opt';
@@ -1059,6 +1079,7 @@ async function saveInput(){
   const brandId=document.getElementById('p-brand').value;
   const catId=document.getElementById('p-cat').value;
   const subId=document.getElementById('p-sub').value;
+  const storeId=document.getElementById('p-store')?.value;
   const state=document.getElementById('p-state').value;
   const date=document.getElementById('p-date').value;
   const title=document.getElementById('p-title').value.trim();
@@ -1072,7 +1093,9 @@ async function saveInput(){
   // grade는 자동 산정값으로 덮어씀. 저장 시 임시 '안전'으로 넣고 loadAll에서 재계산.
   const {error}=await sb.from('risks').insert({
     division_id:parseInt(divId),brand_id:parseInt(brandId),category_id:parseInt(catId),
-    subcategory_id:subId?parseInt(subId):null,grade:'안전',item_state:state,registered_at:date,title,
+    subcategory_id:subId?parseInt(subId):null,
+    store_id:storeId?parseInt(storeId):null,
+    grade:'안전',item_state:state,registered_at:date,title,
     status:status||null,note:note||null,
     violation_count:viol?parseInt(viol):null,
     monitoring_count:mon?parseInt(mon):null
@@ -1390,7 +1413,10 @@ function openEdit(id){
   editId=id;
   const r=allRisks.find(x=>x.id===id); if(!r) return;
   document.getElementById('m-div').value=r.divisions?.id||'';
-  onMDiv().then(()=>{document.getElementById('m-brand').value=r.brands?.id||'';});
+  onMDiv().then(()=>{
+    document.getElementById('m-brand').value=r.brands?.id||'';
+    const ms=document.getElementById('m-store'); if(ms && r.store_id) ms.value=r.store_id;
+  });
   document.getElementById('m-cat').value=r.risk_categories?.id||'';
   onMCat();
   setTimeout(()=>{document.getElementById('m-sub').value=r.risk_subcategories?.id||'';},80);
@@ -1409,10 +1435,13 @@ function closeModal(){document.getElementById('mo-ov').classList.remove('open');
 function handleOvClick(e){if(e.target.id==='mo-ov') closeModal();}
 async function onMDiv(){
   const divId=document.getElementById('m-div').value;
+  const divObj=allDiv.find(d=>d.id==divId);
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('m-brand');
   el.innerHTML='<option value="">선택</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
+  // 매장 드롭다운 (유통만)
+  toggleStoreDropdown('m',divObj,divId);
 }
 function onMCat(){
   const catId=document.getElementById('m-cat').value;
@@ -1426,6 +1455,7 @@ async function saveModal(){
   const brandId=document.getElementById('m-brand').value;
   const catId=document.getElementById('m-cat').value;
   const subId=document.getElementById('m-sub').value;
+  const storeId=document.getElementById('m-store')?.value;
   const state=document.getElementById('m-state').value;
   const date=document.getElementById('m-date').value;
   const title=document.getElementById('m-title').value.trim();
@@ -1439,7 +1469,9 @@ async function saveModal(){
   // grade는 자동 산정. DB에는 임시 '안전' 저장 후 loadAll에서 재계산
   const {error}=await sb.from('risks').update({
     division_id:parseInt(divId),brand_id:parseInt(brandId),category_id:parseInt(catId),
-    subcategory_id:subId?parseInt(subId):null,grade:'안전',item_state:state,registered_at:date,title,
+    subcategory_id:subId?parseInt(subId):null,
+    store_id:storeId?parseInt(storeId):null,
+    grade:'안전',item_state:state,registered_at:date,title,
     status:status||null,note:note||null,
     violation_count:viol?parseInt(viol):null,
     monitoring_count:mon?parseInt(mon):null
@@ -1627,6 +1659,79 @@ async function downloadPPT(){
       rowH:0.32, fontFace:RPT.FONT
     });
   }
+  // ── 슬라이드 3: 계열사 순위 ─────────────────
+  // 위반(=위반+완료) 건수 적은 순(위) → 많은 순(아래)
+  const divRanks = divs.map(dv=>{
+    const items=baseRisks.filter(r=>r.divisions?.id===dv.id);
+    const total=items.length, viol=cViol(items);
+    return {name:dv.name, total, viol, rate:rPct(viol,total)};
+  }).sort((a,b)=>a.viol-b.viol || a.total-b.total);
+
+  const s3=pptx.addSlide(); head(s3,'계열사 순위','위반+완료 건수 적은 순 → 많은 순');
+  const rankHdr=[
+    {text:'순위',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
+    {text:'계열사',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
+    {text:'위반 건수',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
+    {text:'전체 모니터링',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
+    {text:'위반율',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}}
+  ];
+  const rankRows=[rankHdr];
+  divRanks.forEach((d,i)=>{
+    const fill=i%2?RPT.BG:RPT.SURF;
+    rankRows.push([
+      {text:`${i+1}`, options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:11}},
+      {text:d.name,  options:{bold:true,color:RPT.TEXT, fill,align:'center',valign:'middle',fontSize:12}},
+      {text:`${d.viol}`,  options:{bold:true,color:d.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:13}},
+      {text:`${d.total}`, options:{color:RPT.TEXT, fill,align:'center',valign:'middle',fontSize:11}},
+      {text:`${d.rate}%`, options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:11}}
+    ]);
+  });
+  s3.addTable(rankRows,{
+    x:2.0, y:1.85, w:9.33, colW:[1.0, 2.4, 2.0, 2.0, 1.93],
+    border:{type:'solid',pt:0.5,color:RPT.BORDER},
+    rowH:0.5, fontFace:RPT.FONT
+  });
+
+  // ── 슬라이드 4: 계열사별 브랜드 순위 ─────────────────
+  // 계열사별 컬럼 (가로 배치), 각 컬럼 안에 브랜드 순위
+  const s4=pptx.addSlide(); head(s4,'계열사별 브랜드 순위','위반+완료 건수 적은 순(위) → 많은 순(아래)');
+  const cols=divs;
+  const slideW=13.33, margin=0.35, gap=0.12;
+  const colW = (slideW - margin*2 - gap*(cols.length-1)) / cols.length;
+  const startY=1.85;
+  cols.forEach((dv,ci)=>{
+    const x = margin + ci*(colW+gap);
+    // 컬럼 헤더 = 계열사명
+    const hdrRow=[[
+      {text:dv.name,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}}
+    ],[
+      {text:'순위 · 브랜드',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'left',valign:'middle',fontSize:9}}
+    ]];
+    s4.addTable(hdrRow,{x,y:startY,w:colW,colW:[colW],rowH:0.4,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT});
+
+    // 브랜드 데이터
+    const brandData = allBrands.filter(b=>b.division_id===dv.id).map(b=>{
+      const items=baseRisks.filter(r=>r.brands?.id===b.id);
+      return {name:b.name, viol:cViol(items), total:items.length};
+    }).sort((a,b)=>a.viol-b.viol || a.total-b.total);
+
+    if(brandData.length===0){
+      s4.addText('(브랜드 없음)',{x,y:startY+0.8,w:colW,h:0.35,fontSize:9,color:RPT.TEXT3,fontFace:RPT.FONT,align:'center',italic:true});
+      return;
+    }
+
+    const brandRows = brandData.map((bd,bi)=>{
+      const fill=bi%2?RPT.BG:RPT.SURF;
+      return [
+        {text:`${bi+1}`,  options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:9}},
+        {text:bd.name,    options:{color:RPT.TEXT, fill,align:'left',valign:'middle',fontSize:9}},
+        {text:`${bd.viol}`, options:{bold:true,color:bd.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:10}}
+      ];
+    });
+    const innerColW=[colW*0.18, colW*0.52, colW*0.30];
+    s4.addTable(brandRows,{x,y:startY+0.8,w:colW,colW:innerColW,rowH:0.34,border:{type:'solid',pt:0.4,color:RPT.BORDER},fontFace:RPT.FONT});
+  });
+
   addMatrixSlide('계열사별 현황 (연누적)', baseRisks);
   addMatrixSlide('계열사별 현황 (전월)',  prevRisks);
 
