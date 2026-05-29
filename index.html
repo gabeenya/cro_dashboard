@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Eland CRO System</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c8102e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ELAND CRO">
+<link rel="apple-touch-icon" href="favicon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"
@@ -255,6 +261,33 @@
           <span class="kpi-bottom-label">전체 비중</span>
           <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-안전" id="k-안전-bar" style="width:0%"></div></div>
           <span class="kpi-rate-val" id="k-안전-pct" style="color:var(--안전-c)">—%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 알림 섹션 -->
+    <div class="alert-row">
+      <div class="alert-card ac-overdue" onclick="showOverdueModal()">
+        <div class="alert-icon">⏰</div>
+        <div class="alert-body">
+          <div class="alert-ttl">장기 미해결</div>
+          <div class="alert-val" id="alert-overdue-n">—</div>
+          <div class="alert-sub">
+            <select id="alert-overdue-days" onchange="renderAlerts(getFiltered())" onclick="event.stopPropagation()">
+              <option value="3" selected>3일</option>
+              <option value="7">7일</option>
+              <option value="14">14일</option>
+              <option value="30">30일</option>
+            </select> 이상 경과 + 미해결
+          </div>
+        </div>
+      </div>
+      <div class="alert-card ac-surge" onclick="showSurgeModal()">
+        <div class="alert-icon">📈</div>
+        <div class="alert-body">
+          <div class="alert-ttl">이상 급증 영역</div>
+          <div class="alert-val" id="alert-surge-n">—</div>
+          <div class="alert-sub">최근 7일 위반 평년 대비 +50% 이상</div>
         </div>
       </div>
     </div>

@@ -240,7 +240,7 @@ function renderDash(risks){
   const fbar=document.getElementById('main-fbar');
   if(fbar) fbar.style.display='';
   updateFbarSelects();
-  renderKPI(risks); renderTrend(risks); renderDonut(risks);
+  renderAlerts(risks); renderKPI(risks); renderTrend(risks); renderDonut(risks);
   if(!activeDiv){
     // 메인뷰
     document.getElementById('section-main').style.display='';
@@ -254,6 +254,144 @@ function renderDash(risks){
     renderBrandGrid(risks);
     renderHighDiv(risks);
   }
+}
+
+// ── 알림 (장기 미해결 + 이상 급증) ────────────────────────
+let _alertOverdueList=[], _alertSurgeList=[], _alertOverdueDays=3;
+
+function renderAlerts(risks){
+  // (1) 장기 미해결: 등록 후 N일 경과 + 위반/모니터링 상태
+  const days=parseInt(document.getElementById('alert-overdue-days')?.value||'3');
+  _alertOverdueDays=days;
+  const cutoff=new Date(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-days);
+  const overdue=risks.filter(r=>{
+    if(!r.registered_at) return false;
+    if(r.item_state!=='위반'&&r.item_state!=='모니터링') return false;
+    return new Date(r.registered_at) <= cutoff;
+  }).sort((a,b)=>(a.registered_at||'').localeCompare(b.registered_at||''));
+  _alertOverdueList=overdue;
+  const oEl=document.getElementById('alert-overdue-n');
+  if(oEl) oEl.textContent=overdue.length.toLocaleString();
+  const oCard=document.querySelector('.ac-overdue');
+  if(oCard) oCard.classList.toggle('has-alert', overdue.length>0);
+
+  // (2) 이상 급증: (계열사 × 대분류) 그룹별 최근 7일 위반 vs 직전 4주 주평균
+  const now=new Date(); now.setHours(0,0,0,0);
+  const recentStart=new Date(now); recentStart.setDate(recentStart.getDate()-7);
+  const baselineStart=new Date(now); baselineStart.setDate(baselineStart.getDate()-35);
+  const groups={};
+  risks.forEach(r=>{
+    if(r.item_state!=='위반'&&r.item_state!=='완료') return;
+    if(!r.registered_at) return;
+    const d=new Date(r.registered_at);
+    if(d>=now) return;
+    const k=`${r.divisions?.id||0}_${r.risk_categories?.id||0}`;
+    if(!groups[k]) groups[k]={divId:r.divisions?.id, catId:r.risk_categories?.id, div:r.divisions?.name||'-', cat:r.risk_categories?.name||'-', recent:0, baseline:0, recentItems:[]};
+    if(d>=recentStart){ groups[k].recent++; groups[k].recentItems.push(r); }
+    else if(d>=baselineStart){ groups[k].baseline++; }
+  });
+  const surges=[];
+  Object.values(groups).forEach(g=>{
+    const baselineAvg=g.baseline/4;
+    if(g.recent>=3 && g.recent/Math.max(baselineAvg,0.5) >= 1.5){
+      g.baselineAvg=baselineAvg;
+      g.pct=Math.round((g.recent/Math.max(baselineAvg,0.5)-1)*100);
+      surges.push(g);
+    }
+  });
+  surges.sort((a,b)=>b.pct-a.pct);
+  _alertSurgeList=surges;
+  const sEl=document.getElementById('alert-surge-n');
+  if(sEl) sEl.textContent=surges.length.toLocaleString();
+  const sCard=document.querySelector('.ac-surge');
+  if(sCard) sCard.classList.toggle('has-alert', surges.length>0);
+}
+
+function showOverdueModal(){
+  const list=_alertOverdueList;
+  const days=_alertOverdueDays;
+  if(!list.length){ showToast(`${days}일 이상 미해결 건이 없습니다`); return; }
+  const html=`
+    <div class="mo-hd">
+      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">⏰ 장기 미해결 (${days}일↑)</span></div>
+      <button class="mo-cls" onclick="closeAlertModal()">×</button>
+    </div>
+    <div class="mo-bd">
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">등록 후 ${days}일 이상 지났지만 아직 '완료' 처리되지 않은 항목 <b style="color:#ea580c">${list.length}건</b></div>
+      <div style="overflow-x:auto">
+      <table class="tbl" style="min-width:600px">
+        <thead><tr><th>경과</th><th>등록일</th><th>계열사</th><th>브랜드</th><th>리스크명</th><th>상태</th><th>등급</th></tr></thead>
+        <tbody>
+          ${list.map(r=>{
+            const elapsed=Math.floor((Date.now()-new Date(r.registered_at).getTime())/86400000);
+            return `<tr onclick="closeAlertModal();openEdit('${r.id}')">
+              <td style="font-weight:700;color:#ea580c;white-space:nowrap">${elapsed}일</td>
+              <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
+              <td>${r.divisions?.name||'-'}</td>
+              <td>${r.brands?.name||'-'}</td>
+              <td>${r.title||'-'}</td>
+              <td>${stateBadge(r.item_state)}</td>
+              <td>${gradeBadge(r.grade)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  showAlertModal(html);
+}
+
+function showSurgeModal(){
+  const list=_alertSurgeList;
+  if(!list.length){ showToast('급증 영역이 없습니다'); return; }
+  const html=`
+    <div class="mo-hd">
+      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">📈 이상 급증 영역</span></div>
+      <button class="mo-cls" onclick="closeAlertModal()">×</button>
+    </div>
+    <div class="mo-bd">
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">최근 7일 위반 건수가 직전 4주 주간 평균 대비 <b style="color:#dc2626">50% 이상 증가</b>한 영역 (절대 건수 3건 이상) — <b>${list.length}건</b></div>
+      <div style="overflow-x:auto">
+      <table class="tbl" style="min-width:520px">
+        <thead><tr><th>계열사</th><th>리스크 영역</th><th>최근 7일</th><th>평년 주평균</th><th>증감</th></tr></thead>
+        <tbody>
+          ${list.map(g=>`<tr>
+            <td>${g.div}</td>
+            <td>${g.cat}</td>
+            <td style="text-align:center;font-weight:700">${g.recent}건</td>
+            <td style="text-align:center;color:var(--text3)">${g.baselineAvg.toFixed(1)}건</td>
+            <td style="font-weight:700;color:#dc2626">+${g.pct}%</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  showAlertModal(html);
+}
+
+function showAlertModal(html){
+  let ov=document.getElementById('alert-ov');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='alert-ov';
+    ov.className='mo-ov';
+    ov.onclick=(e)=>{ if(e.target.id==='alert-ov') closeAlertModal(); };
+    ov.innerHTML='<div class="modal" id="alert-modal" style="width:780px"></div>';
+    document.body.appendChild(ov);
+  }
+  document.getElementById('alert-modal').innerHTML=html;
+  ov.classList.add('open');
+}
+function closeAlertModal(){
+  const ov=document.getElementById('alert-ov');
+  if(ov) ov.classList.remove('open');
+}
+
+// ── PWA 서비스 워커 등록 ─────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=>console.log('SW 등록 실패:',err));
+  });
 }
 
 // ── KPI ────────────────────────────────────
