@@ -257,11 +257,19 @@ body::after{
 <script>
 const SUPABASE_URL = 'https://ywceavigvleurnzzeqdv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Ny1yoy5La-q9Tw7jT6pstg_SV0_fb1a';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// 보안: index.html과 동일하게 세션을 sessionStorage에 저장(창 닫으면 소멸).
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true }
+});
 
 // URL ?pending=1 진입 시 곧장 대기 화면
 const params=new URLSearchParams(location.search);
 if(params.get('pending')==='1') showPending();
+// 자동 만료로 로그아웃된 경우 안내
+if(params.get('expired')==='1'){
+  const el=document.getElementById('msg-login');
+  if(el){ el.className='msg err'; el.textContent='보안을 위해 3시간이 지나 자동 로그아웃되었습니다. 다시 로그인해 주세요.'; }
+}
 
 // 이미 로그인된 상태로 들어왔다면 자동 진입(승인 확인 후)
 (async()=>{
@@ -296,6 +304,7 @@ function showPending(){
 }
 function backToLogin(){
   // 대기 화면에 진입한 사용자도 다른 계정으로 로그인 가능하도록 세션 정리
+  sessionStorage.removeItem('cro_loginAt');
   sb.auth.signOut().finally(()=>{
     history.replaceState(null,'',location.pathname);
     document.getElementById('pending-area').style.display='none';
@@ -368,7 +377,9 @@ async function checkApprovedAndGo(user){
     showPending();
     return false;
   }
-  // 통과: 대시보드로
+  // 통과: 로그인 시각 기록(3시간 자동 만료 기준) 후 대시보드로
+  // 이미 기록돼 있으면(기존 세션 자동 진입) 갱신하지 않아 만료 기준이 밀리지 않음
+  if(!sessionStorage.getItem('cro_loginAt')) sessionStorage.setItem('cro_loginAt', String(Date.now()));
   location.replace('index.html');
   return true;
 }

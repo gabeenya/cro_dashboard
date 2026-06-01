@@ -1,7 +1,10 @@
 // ── Supabase ────────────────────────────────
 const SUPABASE_URL = 'https://ywceavigvleurnzzeqdv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Ny1yoy5La-q9Tw7jT6pstg_SV0_fb1a';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// 보안: 세션을 sessionStorage에 저장 → 창(탭)을 닫으면 로그인 소멸. 새로고침은 유지됨.
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true }
+});
 
 // ── 상태 ───────────────────────────────────
 let allDiv=[], allBrands=[], allCats=[], allSubs=[], allStores=[], allRisks=[];
@@ -39,8 +42,83 @@ async function authGate(){
 }
 
 async function doLogout(){
+  clearSessionTimers();
+  sessionStorage.removeItem('cro_loginAt');
   await sb.auth.signOut();
   location.replace('login.html');
+}
+
+// ── 세션 자동 만료 (보안) ───────────────────
+// 정책: 창(탭)을 닫으면 sessionStorage가 비워져 로그인 소멸.
+//      로그인 후 3시간이 지나면 같은 창에서도 자동 로그아웃(만료 5분 전 경고 팝업).
+const SESSION_MAX_MS  = 3 * 60 * 60 * 1000; // 최대 유지 3시간
+const SESSION_WARN_MS = 5 * 60 * 1000;      // 만료 5분 전 경고
+let _sessTimers = [], _sessCountdown = null;
+
+function clearSessionTimers(){
+  _sessTimers.forEach(t=>clearTimeout(t)); _sessTimers=[];
+  if(_sessCountdown){ clearInterval(_sessCountdown); _sessCountdown=null; }
+}
+
+function startSessionTimers(){
+  clearSessionTimers();
+  let loginAt = +sessionStorage.getItem('cro_loginAt');
+  if(!loginAt){ loginAt = Date.now(); sessionStorage.setItem('cro_loginAt', String(loginAt)); }
+  const expireAt = loginAt + SESSION_MAX_MS;
+  const remaining = expireAt - Date.now();
+  if(remaining <= 0){ sessionTimeoutLogout(); return; }
+  // 만료 시각에 자동 로그아웃
+  _sessTimers.push(setTimeout(sessionTimeoutLogout, remaining));
+  // 만료 전 경고 팝업
+  const warnIn = remaining - SESSION_WARN_MS;
+  if(warnIn <= 0) showSessionWarning(expireAt);
+  else _sessTimers.push(setTimeout(()=>showSessionWarning(expireAt), warnIn));
+}
+
+async function sessionTimeoutLogout(){
+  clearSessionTimers();
+  sessionStorage.removeItem('cro_loginAt');
+  await sb.auth.signOut();
+  location.replace('login.html?expired=1');
+}
+
+function showSessionWarning(expireAt){
+  if(document.getElementById('sess-warn-ov')) return; // 중복 방지
+  const ov=document.createElement('div');
+  ov.id='sess-warn-ov';
+  ov.className='mo-ov open';
+  ov.style.zIndex='9999';
+  ov.innerHTML=`
+    <div class="modal" style="width:360px;text-align:center">
+      <div class="mo-bd" style="padding:28px 24px">
+        <div style="font-size:34px;margin-bottom:10px">⏰</div>
+        <div style="font-size:16px;font-weight:800;color:var(--navy);margin-bottom:8px">곧 자동 로그아웃됩니다</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6">
+          보안을 위해 로그인 후 3시간이 지나면 자동으로 로그아웃됩니다.<br>
+          남은 시간 <span id="sess-warn-cd" style="font-weight:800;color:var(--red)">5:00</span>
+        </div>
+      </div>
+      <div class="mo-ft" style="justify-content:center">
+        <button class="btn btn-sm" onclick="dismissSessionWarning()">확인</button>
+        <button class="btn btn-red btn-sm" onclick="doLogout()">지금 로그아웃</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const cd=document.getElementById('sess-warn-cd');
+  const tick=()=>{
+    const ms=expireAt-Date.now();
+    if(ms<=0){ if(_sessCountdown){clearInterval(_sessCountdown);_sessCountdown=null;} sessionTimeoutLogout(); return; }
+    const m=Math.floor(ms/60000), s=Math.floor((ms%60000)/1000);
+    if(cd) cd.textContent=`${m}:${String(s).padStart(2,'0')}`;
+  };
+  tick();
+  _sessCountdown=setInterval(tick,1000);
+}
+
+// 팝업만 닫음 — 만료 시각이 되면 그대로 자동 로그아웃됨
+function dismissSessionWarning(){
+  const ov=document.getElementById('sess-warn-ov'); if(ov) ov.remove();
+  if(_sessCountdown){ clearInterval(_sessCountdown); _sessCountdown=null; }
 }
 
 // ── 사이드바 토글 (모바일) ─────────────────────────────
@@ -81,6 +159,7 @@ function renderUserBox(){
 // ── 초기화 ─────────────────────────────────
 async function init(){
   if(!(await authGate())) return; // 미로그인/미승인은 여기서 종료
+  startSessionTimers();           // 3시간 자동 만료 타이머 가동
   renderUserBox();
   const now=new Date();
   document.getElementById('today-date').textContent=
@@ -210,6 +289,17 @@ function setDiv(name,el){
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
   document.getElementById('page-dashboard').classList.add('on');
   renderDash(getFiltered());
+}
+
+// 헤더의 빨간 글씨(현재 화면 이름) 클릭 → 그 화면의 메인 페이지로 복귀.
+// 계열사 보기 중이면 해당 계열사 대시보드, 전사 보기면 전사 대시보드로 이동.
+function goViewHome(){
+  const el = activeDiv ? document.getElementById('div-'+activeDiv)
+                       : document.getElementById('nav-all');
+  // 상단 필터 다시 표시(데이터 입력/AI 등에서 숨겨졌을 수 있음)
+  const fbar=document.getElementById('main-fbar'); if(fbar) fbar.style.display='';
+  setDiv(activeDiv, el);
+  window.scrollTo(0,0);
 }
 
 function getFiltered(){
