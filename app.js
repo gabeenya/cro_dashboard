@@ -880,11 +880,26 @@ async function revokeUser(uid){
 }
 
 async function deleteUser(uid){
-  if(!confirm('이 신청을 삭제하시겠습니까?\n목록에서 제거되며, 해당 사용자는 로그인할 수 없게 됩니다.\n(다시 이용하려면 재가입이 필요합니다)')) return;
-  const {error}=await sb.from('profiles').delete().eq('id',uid);
-  if(error){ showToast('삭제 실패: '+error.message); return; }
-  showToast('삭제 완료');
-  renderAdmin();
+  if(!confirm('이 가입 요청을 거절하고 삭제하시겠습니까?\n목록에서 완전히 제거되며, 본인이 원하면 나중에 다시 가입 요청할 수 있습니다.')) return;
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){ showToast('세션이 만료되었습니다. 다시 로그인해주세요.'); return; }
+  try{
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/delete-user`,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${session.access_token}`,
+        'apikey':SUPABASE_ANON_KEY
+      },
+      body:JSON.stringify({ userId:uid })
+    });
+    const out=await res.json().catch(()=>({}));
+    if(!res.ok){ showToast('삭제 실패: '+(out.error||('HTTP '+res.status))); return; }
+    showToast('삭제(거절) 완료');
+    renderAdmin();
+  }catch(e){
+    showToast('삭제 오류: '+(e.message||e));
+  }
 }
 
 function escapeHTML(s){
