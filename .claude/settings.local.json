@@ -16,7 +16,10 @@
       "Bash(git push *)",
       "Bash(grep -iE \"\\\\.sql$|supabase|function|policy|rls\")",
       "Bash(node --check app.js)",
-      "Bash(node --check sw.js)"
+      "Bash(node --check sw.js)",
+      "Bash(cd \"C:\\\\Users\\\\lee_gabeen\\\\Desktop\\\\클로드\\\\cro_dashboard-1\")",
+      "Bash(curl -s \"https://registry.npmjs.org/marked\")",
+      "Bash(openssl dgst *)"
     ]
   }
 }
