@@ -131,7 +131,7 @@
     <select id="f-div" onchange="applyFilter()"><option value="">전체 계열사</option></select>
     <select id="f-brand" onchange="applyFilter()"><option value="">전체 브랜드/조직</option></select>
     <select id="f-store" onchange="applyFilter()" style="display:none"><option value="">전체 매장</option></select>
-    <select id="f-cat" onchange="applyFilter()"><option value="">전체 대분류</option></select>
+    <select id="f-cat" onchange="applyFilter()"><option value="">전체 영역 대분류</option></select>
     <select id="f-grade" onchange="applyFilter()">
       <option value="">전체 등급</option>
       <option value="위험">위험</option>
@@ -388,7 +388,7 @@
       <span class="fbar-label">필터</span>
       <select id="lf-div" onchange="onLfDivChange()"><option value="">전체 계열사</option></select>
       <select id="lf-brand" onchange="renderList()"><option value="">전체 브랜드/조직</option></select>
-      <select id="lf-cat" onchange="renderList()"><option value="">전체 대분류</option></select>
+      <select id="lf-cat" onchange="renderList()"><option value="">전체 영역 대분류</option></select>
       <select id="lf-grade" onchange="renderList()">
         <option value="">전체 등급</option>
         <option value="위험">위험</option><option value="주의">주의</option><option value="안전">안전</option>
@@ -412,7 +412,7 @@
         <table class="tbl" style="min-width:860px">
           <thead><tr>
             <th>등록일</th><th>계열사</th><th>브랜드/조직</th>
-            <th>대분류</th><th>중분류</th><th>리스크명</th>
+            <th>영역 대분류</th><th>영역 중분류</th><th>리스크명</th>
             <th>등급</th><th>상태</th><th>위반건수</th><th>모니터링건수</th><th>위반율</th>
             <th>현황</th><th>비고</th><th></th>
           </tr></thead>
@@ -437,7 +437,7 @@
           <button class="btn" onclick="downloadBulkTemplate()">📥 양식 다운로드</button>
           <button class="btn btn-red" onclick="triggerBulkUpload()">📤 엑셀 업로드</button>
           <input type="file" id="bulk-file" accept=".xlsx" style="display:none" onchange="handleBulkUpload(event)">
-          <span style="color:var(--text2);font-size:11px;line-height:1.5">계열사를 먼저 고르면 브랜드가, 대분류를 먼저 고르면 중분류가 자동 필터됩니다.<br>등급은 시스템이 자동 산정하므로 입력하지 않습니다.</span>
+          <span style="color:var(--text2);font-size:11px;line-height:1.5">계열사를 먼저 고르면 브랜드가, 영역 대분류를 먼저 고르면 영역 중분류가 자동 필터됩니다.<br>등급은 시스템이 자동 산정하므로 입력하지 않습니다.</span>
         </div>
         <div id="bulk-result" style="margin-top:10px"></div>
       </div>
@@ -454,8 +454,8 @@
           <div class="fg"><label class="flb">브랜드/조직 *</label><select class="fc" id="p-brand" onchange="onPBrand()"><option value="">계열사 먼저 선택</option></select></div>
           <div class="fg hidden-fg" id="p-store-wrap"><label class="flb">매장 (유통 전용)</label><select class="fc" id="p-store"><option value="">선택 (선택사항)</option></select></div>
           <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="p-date"></div>
-          <div class="fg"><label class="flb">대분류 *</label><select class="fc" id="p-cat" onchange="onPCat()"><option value="">선택</option></select></div>
-          <div class="fg"><label class="flb">중분류</label><select class="fc" id="p-sub"><option value="">없음</option></select></div>
+          <div class="fg"><label class="flb">영역 대분류 *</label><select class="fc" id="p-cat" onchange="onPCat()"><option value="">선택</option></select></div>
+          <div class="fg"><label class="flb">영역 중분류</label><select class="fc" id="p-sub"><option value="">없음</option></select></div>
           <!-- 상태 선택 (모니터링/위반/완료) -->
           <div class="fg full">
             <label class="flb">상태 *</label>
@@ -466,9 +466,8 @@
             </div>
             <input type="hidden" id="p-state" value="">
           </div>
-          <!-- 위반건수/모니터링건수 -->
-          <div class="fg"><label class="flb">위반건수</label><input type="number" class="fc" id="p-viol" placeholder="0" min="0"></div>
-          <div class="fg"><label class="flb">모니터링건수</label><input type="number" class="fc" id="p-mon" placeholder="0" min="0"></div>
+          <!-- 선택한 상태의 건수 -->
+          <div class="fg full"><label class="flb" id="p-cnt-lb">건수</label><input type="number" class="fc" id="p-cnt" placeholder="상태를 먼저 선택하세요" min="0"></div>
           <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="p-title" placeholder="리스크 제목"></div>
           <div class="fg full"><label class="flb">현황</label><textarea class="fc" id="p-status" placeholder="현재 상황 및 조치 내용"></textarea></div>
           <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="p-note" placeholder="추가 메모"></textarea></div>
@@ -502,7 +501,7 @@
       <div class="card-bd" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-red" id="mock-gen-btn" onclick="generateMockData()">987건 생성</button>
         <button class="btn" id="mock-del-btn" onclick="deleteMockData()">Mock 데이터 모두 삭제</button>
-        <span style="font-size:11px;color:var(--text2);margin-left:4px">계열사 · 브랜드 · 대분류 · 등록일 · 상태가 골고루 분포되도록 생성</span>
+        <span style="font-size:11px;color:var(--text2);margin-left:4px">계열사 · 브랜드 · 영역 대분류 · 등록일 · 상태가 골고루 분포되도록 생성</span>
       </div>
     </div>
   </div>
@@ -621,8 +620,8 @@
       <div class="fgrid">
         <div class="fg"><label class="flb">계열사 *</label><select class="fc" id="m-div" onchange="onMDiv()"><option value="">선택</option></select></div>
         <div class="fg"><label class="flb">브랜드/조직 *</label><select class="fc" id="m-brand" onchange="onMBrand()"><option value="">계열사 먼저 선택</option></select></div>
-        <div class="fg"><label class="flb">대분류 *</label><select class="fc" id="m-cat" onchange="onMCat()"><option value="">선택</option></select></div>
-        <div class="fg"><label class="flb">중분류</label><select class="fc" id="m-sub"><option value="">없음</option></select></div>
+        <div class="fg"><label class="flb">영역 대분류 *</label><select class="fc" id="m-cat" onchange="onMCat()"><option value="">선택</option></select></div>
+        <div class="fg"><label class="flb">영역 중분류</label><select class="fc" id="m-sub"><option value="">없음</option></select></div>
         <div class="fg hidden-fg" id="m-store-wrap"><label class="flb">매장 (유통 전용)</label><select class="fc" id="m-store"><option value="">선택 (선택사항)</option></select></div>
         <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="m-date"></div>
         <div class="fg full">

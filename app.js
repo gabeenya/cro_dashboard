@@ -102,8 +102,8 @@ async function loadMaster(){
   allDiv=d.data||[]; allBrands=b.data||[]; allCats=c.data||[]; allSubs=s.data||[]; allStores=st.data||[];
   fillSel('f-div',allDiv,'전체 계열사');
   fillSel('lf-div',allDiv,'전체 계열사');
-  fillSel('f-cat',allCats,'전체 대분류');
-  fillSel('lf-cat',allCats,'전체 대분류');
+  fillSel('f-cat',allCats,'전체 영역 대분류');
+  fillSel('lf-cat',allCats,'전체 영역 대분류');
   ['m-div','p-div'].forEach(id=>{
     allDiv.forEach(x=>{document.getElementById(id).innerHTML+=`<option value="${x.id}">${x.name}</option>`;});
   });
@@ -139,11 +139,11 @@ async function loadAll(){
 // ── 등급 자동 산정 ───────────────────────────
 // 규칙:
 //   위험: (a) 등록 후 14일 이상 미완료  또는
-//         (b) 동일 위반(브랜드+대분류+중분류)이 최근 30일 내 3건 이상  또는
-//         (c) 동일 대분류의 이번달 등록 건수가 전월 대비 10% 이상 증가
+//         (b) 동일 위반(브랜드+영역 대분류+영역 중분류)이 최근 30일 내 3건 이상  또는
+//         (c) 동일 영역 대분류의 이번달 등록 건수가 전월 대비 10% 이상 증가
 //   주의: (a) 등록 후 7일 이상 미완료  또는
 //         (b) 동일 위반이 최근 30일 내 2건  또는
-//         (c) 동일 대분류 등록이 전월 대비 5% 이상 증가
+//         (c) 동일 영역 대분류 등록이 전월 대비 5% 이상 증가
 //   안전: 위 외
 function computeGrade(r,all){
   const now=new Date();
@@ -162,7 +162,7 @@ function computeGrade(r,all){
     const d=x.registered_at?new Date(x.registered_at):null;
     return d&&d>=ago30;
   }).length;
-  // (c) 대분류별 전월 대비 증가율 — Mock 데이터는 일제 입력으로 왜곡되므로 skip
+  // (c) 영역 대분류별 전월 대비 증가율 — Mock 데이터는 일제 입력으로 왜곡되므로 skip
   let growth=0;
   const isMock=r.note?.startsWith('[MOCK]');
   if(!isMock){
@@ -300,7 +300,7 @@ function renderAlerts(risks){
   const oCard=document.querySelector('.ac-overdue');
   if(oCard) oCard.classList.toggle('has-alert', overdue.length>0);
 
-  // (2) 이상 급증: (계열사 × 대분류) 그룹별 최근 7일 위반 vs 직전 4주 주평균
+  // (2) 이상 급증: (계열사 × 영역 대분류) 그룹별 최근 7일 위반 vs 직전 4주 주평균
   const now=new Date(); now.setHours(0,0,0,0);
   const recentStart=new Date(now); recentStart.setDate(recentStart.getDate()-7);
   const baselineStart=new Date(now); baselineStart.setDate(baselineStart.getDate()-35);
@@ -844,7 +844,10 @@ async function renderAdmin(){
       <td>${escapeHTML(p.division)}</td>
       <td>${escapeHTML(p.department)}</td>
       <td>${escapeHTML(p.email)}</td>
-      <td><button class="btn btn-red btn-sm" onclick="approveUser('${p.id}')">승인</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-red btn-sm" onclick="approveUser('${p.id}')">승인</button>
+        <button class="btn btn-sm" style="margin-left:6px" onclick="deleteUser('${p.id}')">삭제</button>
+      </td>
     </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">대기 중인 신청 없음</td></tr>';
   const ab=document.getElementById('admin-approved-body');
   ab.innerHTML=approved.length?approved.map(p=>{
@@ -873,6 +876,14 @@ async function revokeUser(uid){
   const {error}=await sb.from('profiles').update({approved:false}).eq('id',uid);
   if(error){ showToast('해제 실패: '+error.message); return; }
   showToast('승인 해제 완료');
+  renderAdmin();
+}
+
+async function deleteUser(uid){
+  if(!confirm('이 신청을 삭제하시겠습니까?\n목록에서 제거되며, 해당 사용자는 로그인할 수 없게 됩니다.\n(다시 이용하려면 재가입이 필요합니다)')) return;
+  const {error}=await sb.from('profiles').delete().eq('id',uid);
+  if(error){ showToast('삭제 실패: '+error.message); return; }
+  showToast('삭제 완료');
   renderAdmin();
 }
 
@@ -1050,6 +1061,10 @@ function selectState(prefix,val){
     el.className='state-opt';
     if(s===val) el.classList.add('sel-'+s);
   });
+  if(prefix==='p'){
+    const lb=document.getElementById('p-cnt-lb');
+    if(lb) lb.textContent=val?val+' 건수':'건수';
+  }
 }
 
 // ── 데이터 입력 ─────────────────────────────
@@ -1097,7 +1112,7 @@ function onPCat(){
 function resetInput(){
   ['p-div','p-brand','p-cat','p-sub','p-store'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   ['p-title','p-status','p-note'].forEach(i=>document.getElementById(i).value='');
-  ['p-viol','p-mon'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('p-cnt').value='';
   document.getElementById('p-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('p-brand').innerHTML='<option value="">계열사 먼저 선택</option>';
   document.getElementById('p-sub').innerHTML='<option value="">없음</option>';
@@ -1106,6 +1121,7 @@ function resetInput(){
   ['모니터링','위반','완료'].forEach(s=>{
     const el=document.getElementById('ps-'+s); if(el) el.className='state-opt';
   });
+  const cntLb=document.getElementById('p-cnt-lb'); if(cntLb) cntLb.textContent='건수';
 }
 async function saveInput(){
   const divId=document.getElementById('p-div').value;
@@ -1118,9 +1134,9 @@ async function saveInput(){
   const title=document.getElementById('p-title').value.trim();
   const status=document.getElementById('p-status').value.trim();
   const note=document.getElementById('p-note').value.trim();
-  const viol=document.getElementById('p-viol').value;
-  const mon=document.getElementById('p-mon').value;
+  const cnt=document.getElementById('p-cnt').value;
   if(!divId||!brandId||!catId||!state||!date||!title){showToast('필수 항목(*)을 모두 입력해주세요');return;}
+  const cntVal=cnt!==''?parseInt(cnt):null;
   const btn=document.getElementById('p-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
   // grade는 자동 산정값으로 덮어씀. 저장 시 임시 '안전'으로 넣고 loadAll에서 재계산.
@@ -1130,8 +1146,8 @@ async function saveInput(){
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
     status:status||null,note:note||null,
-    violation_count:viol?parseInt(viol):null,
-    monitoring_count:mon?parseInt(mon):null
+    violation_count:state==='모니터링'?null:cntVal,
+    monitoring_count:state==='모니터링'?cntVal:null
   });
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -1156,7 +1172,7 @@ function sanitizeName(s){
 async function downloadBulkTemplate(){
   if(!window.ExcelJS){ showToast('엑셀 라이브러리 로딩 중. 잠시 후 다시 시도해주세요.'); return; }
   if(!allDiv.length||!allBrands.length||!allCats.length){
-    showToast('기준 데이터(계열사/브랜드/대분류)가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.'); return;
+    showToast('기준 데이터(계열사/브랜드/영역 대분류)가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.'); return;
   }
   const wb=new ExcelJS.Workbook();
   wb.creator='이랜드 그룹 리스크 관리 시스템';
@@ -1168,8 +1184,8 @@ async function downloadBulkTemplate(){
     {header:'등록일(YYYY-MM-DD) *',key:'date',width:22},
     {header:'계열사 *',key:'div',width:14},
     {header:'브랜드/조직 *',key:'brand',width:22},
-    {header:'대분류 *',key:'cat',width:20},
-    {header:'중분류',key:'sub',width:24},
+    {header:'영역 대분류 *',key:'cat',width:20},
+    {header:'영역 중분류',key:'sub',width:24},
     {header:'리스크명 *',key:'title',width:36},
     {header:'상태 *',key:'state',width:12}
   ];
@@ -1185,8 +1201,8 @@ async function downloadBulkTemplate(){
   // A열: 계열사 목록
   ref.getCell('A1').value='__계열사__';
   allDiv.forEach((d,i)=>{ ref.getCell(`A${i+2}`).value=d.name; });
-  // B열: 대분류 목록
-  ref.getCell('B1').value='__대분류__';
+  // B열: 영역 대분류 목록
+  ref.getCell('B1').value='__영역 대분류__';
   allCats.forEach((c,i)=>{ ref.getCell(`B${i+2}`).value=c.name; });
   // C열: 상태
   ref.getCell('C1').value='__상태__';
@@ -1196,7 +1212,7 @@ async function downloadBulkTemplate(){
   wb.definedNames.add(`_참조!$B$2:$B$${allCats.length+1}`,'_cats');
   wb.definedNames.add(`_참조!$C$2:$C$4`,'_states');
 
-  // 각 계열사의 브랜드, 각 대분류의 중분류를 가로로 배치
+  // 각 계열사의 브랜드, 각 영역 대분류의 영역 중분류를 가로로 배치
   let col=5; // E열부터
   allDiv.forEach(div=>{
     const brands=allBrands.filter(b=>b.division_id===div.id);
@@ -1236,8 +1252,8 @@ async function downloadBulkTemplate(){
     '',
     '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
     '2. 별표(*) 표시 컬럼은 필수입니다.',
-    '3. 계열사 / 브랜드 / 대분류 / 중분류 / 상태는 드롭다운에서 선택하세요.',
-    '4. 브랜드는 계열사를, 중분류는 대분류를 먼저 선택하면 자동 필터됩니다.',
+    '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태는 드롭다운에서 선택하세요.',
+    '4. 브랜드는 계열사를, 영역 중분류는 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
     '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
     '6. 등급(위험/주의/안전)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
     '7. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
@@ -1283,8 +1299,8 @@ async function handleBulkUpload(ev){
       if(t.startsWith('등록일')) colMap.date=colNumber;
       else if(t.startsWith('계열사')) colMap.div=colNumber;
       else if(t.startsWith('브랜드')) colMap.brand=colNumber;
-      else if(t.startsWith('대분류')) colMap.cat=colNumber;
-      else if(t.startsWith('중분류')) colMap.sub=colNumber;
+      else if(t.startsWith('영역 대분류')) colMap.cat=colNumber;
+      else if(t.startsWith('영역 중분류')) colMap.sub=colNumber;
       else if(t.startsWith('리스크명')) colMap.title=colNumber;
       else if(t.startsWith('상태')) colMap.state=colNumber;
     });
@@ -1338,13 +1354,13 @@ async function handleBulkUpload(ev){
       }
 
       const catObj=allCats.find(c=>c.name===catName);
-      if(!catName) errs.push('대분류 누락');
-      else if(!catObj) errs.push(`대분류 '${catName}' 없음`);
+      if(!catName) errs.push('영역 대분류 누락');
+      else if(!catObj) errs.push(`영역 대분류 '${catName}' 없음`);
 
       let subObj=null;
       if(subName&&catObj){
         subObj=allSubs.find(s=>s.category_id===catObj.id&&s.name===subName);
-        if(!subObj) errs.push(`중분류 '${subName}'는 '${catName}'에 속하지 않음`);
+        if(!subObj) errs.push(`영역 중분류 '${subName}'는 '${catName}'에 속하지 않음`);
       }
 
       if(!title) errs.push('리스크명 누락');
@@ -1501,14 +1517,14 @@ function buildInlineEditRow(r){
         <input type="date" class="fc" id="ie-date" value="${r.registered_at||''}">
       </div>
       <div class="fg">
-        <label class="flb">대분류 *</label>
+        <label class="flb">영역 대분류 *</label>
         <select class="fc" id="ie-cat" onchange="onIECat()">
           <option value="">선택</option>
           ${allCats.map(c=>`<option value="${c.id}" ${c.id===r.risk_categories?.id?'selected':''}>${c.name}</option>`).join('')}
         </select>
       </div>
       <div class="fg">
-        <label class="flb">중분류</label>
+        <label class="flb">영역 중분류</label>
         <select class="fc" id="ie-sub">
           <option value="">없음</option>
           ${subs.map(s=>`<option value="${s.id}" ${s.id===r.risk_subcategories?.id?'selected':''}>${s.name}</option>`).join('')}
@@ -1980,13 +1996,13 @@ async function downloadPPT(){
     h2.push({text:'전체',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:8}});
     h2.push({text:'위반',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'center',fontSize:8}});
     rows.push(h2);
-    // 중분류 행 (없으면 '데이터 없음' 한 줄)
+    // 영역 중분류 행 (없으면 '데이터 없음' 한 줄)
     if(!subs.length && !items.length){
       const span=1+colDivs.length*2+2;
       rows.push([{text:'위반 데이터 없음',options:{colspan:span,color:RPT.TEXT3,align:'center',fontSize:10,italic:true,fill:RPT.BG}}]);
     } else {
-      // 중분류 미지정 항목도 포함하기 위해 [null, ...subs] 흐름
-      const rowKeys=subs.length?subs:[{id:null,name:'(중분류 미지정)'}];
+      // 영역 중분류 미지정 항목도 포함하기 위해 [null, ...subs] 흐름
+      const rowKeys=subs.length?subs:[{id:null,name:'(영역 중분류 미지정)'}];
       rowKeys.forEach((sb,ri)=>{
         const r=[{text:sb.name,options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'left',valign:'middle',fontSize:8}}];
         let sa=0,sv=0;
@@ -2140,7 +2156,7 @@ function pickWeighted(items){
 
 async function generateMockData(){
   if(!allDiv.length||!allBrands.length||!allCats.length){
-    showToast('마스터 데이터(계열사/브랜드/대분류)가 비어있어요');return;
+    showToast('마스터 데이터(계열사/브랜드/영역 대분류)가 비어있어요');return;
   }
   if(!confirm('987건의 Mock 데이터를 생성합니다. 계속하시겠어요?')) return;
   const btn=document.getElementById('mock-gen-btn');
@@ -2152,7 +2168,7 @@ async function generateMockData(){
   // 계열사별 가중치 (최소 10% 보장)
   const DIV_WEIGHTS={'패션':28,'유통':22,'외식':18,'파크':12,'건설':10,'소법인':10};
   const divWeights=allDiv.map(d=>[d, DIV_WEIGHTS[d.name]||15]);
-  // 대분류별 가중치 (앞쪽이 많고 뒤로 갈수록 작아짐, 최소 5)
+  // 영역 대분류별 가중치 (앞쪽이 많고 뒤로 갈수록 작아짐, 최소 5)
   const catWeights=allCats.map((c,i)=>[c, Math.max(5, 30 - i*3)]);
   // 등급 목표 분포: 안전 ≫ 주의 ≫ 위험
   const gradeWeights=[['안전',62],['주의',25],['위험',13]];
