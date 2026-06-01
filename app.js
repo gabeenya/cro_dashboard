@@ -576,7 +576,7 @@ function renderHighMain(risks){
     <tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
-      <td>${r.title}</td><td>${gradeBadge(r.grade)}</td>
+      <td>${escapeHTML(r.title||'-')}</td><td>${gradeBadge(r.grade)}</td>
     </tr>`).join('');
   startHighRotate('high-ticker-main');
 }
@@ -591,7 +591,7 @@ function renderHighDiv(risks){
     <tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.brands?.name||'-'}</td>
-      <td>${r.title}</td><td>${gradeBadge(r.grade)}</td>
+      <td>${escapeHTML(r.title||'-')}</td><td>${gradeBadge(r.grade)}</td>
     </tr>`).join('');
   startHighRotate('high-ticker-div');
 }
@@ -758,14 +758,14 @@ function renderList(){
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
       <td>${r.risk_categories?.name||'-'}</td><td>${r.risk_subcategories?.name||'-'}</td>
-      <td>${r.title}</td>
+      <td>${escapeHTML(r.title||'-')}</td>
       <td>${gradeBadge(r.grade)}</td>
       <td>${stateBadge(r.item_state)}</td>
       <td style="text-align:center">${viol}</td>
       <td style="text-align:center">${mon}</td>
       <td style="text-align:center;font-weight:700;color:var(--위험-c)">${rate}</td>
-      <td class="td-clip">${r.status||'-'}</td>
-      <td class="td-clip">${r.note||'-'}</td>
+      <td class="td-clip">${escapeHTML(r.status||'-')}</td>
+      <td class="td-clip">${escapeHTML(r.note||'-')}</td>
       <td><button class="btn btn-sm" onclick="event.stopPropagation();openEdit('${r.id}')">수정</button></td>
     </tr>`;
   }).join(''):'<tr><td colspan="14" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">조건에 맞는 데이터 없음</td></tr>';

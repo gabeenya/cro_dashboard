@@ -13,7 +13,10 @@
       "Bash(magick -version)",
       "Bash(convert -version)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(grep -iE \"\\\\.sql$|supabase|function|policy|rls\")",
+      "Bash(node --check app.js)",
+      "Bash(node --check sw.js)"
     ]
   }
 }

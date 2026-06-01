@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>이랜드그룹 리스크 관리 시스템 — 사용 안내서</title>
+<style>
+:root{
+  --red:#c8102e; --red-dark:#9e0c24; --red-light:#fdf0f2;
+  --navy:#1a2744; --navy2:#243460;
+  --bg:#f7f8fa; --surface:#ffffff;
+  --border:#dde1ea; --border2:#c8cdd9;
+  --text:#111827; --text2:#4b5563; --text3:#9ca3af;
+  --위험-c:#c8102e; --위험-bg:#fdf0f2;
+  --주의-c:#d97706; --주의-bg:#fff7ed;
+  --안전-c:#15803d; --안전-bg:#f0fdf4;
+  --font:'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:var(--font); color:var(--text); background:var(--bg);
+  font-size:14px; line-height:1.7; padding:32px 16px;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.page{
+  max-width:840px; margin:0 auto; background:var(--surface);
+  border:1px solid var(--border); border-radius:12px;
+  box-shadow:0 6px 24px rgba(26,39,68,0.08); overflow:hidden;
+}
+
+/* 상단 표지 */
+.cover{
+  background:linear-gradient(135deg,#1a2744 0%,#243460 55%,#0f1a30 100%);
+  color:#fff; padding:40px 44px 34px; position:relative; overflow:hidden;
+}
+.cover::after{
+  content:''; position:absolute; top:-120px; right:-120px;
+  width:320px; height:320px; border-radius:50%;
+  background:radial-gradient(circle,rgba(200,16,46,0.30) 0%,transparent 65%);
+}
+.cover-tag{
+  display:inline-block; font-size:11px; font-weight:700; letter-spacing:1.5px;
+  color:#fff; background:var(--red); padding:4px 12px; border-radius:20px; margin-bottom:16px;
+}
+.cover h1{font-size:27px; font-weight:900; margin:0 0 8px; letter-spacing:-0.5px;}
+.cover .sub{font-size:12.5px; color:#c8cfe0; letter-spacing:0.5px;}
+.cover .lead{
+  margin-top:18px; font-size:13px; color:#e8ebf3; line-height:1.6;
+  border-left:3px solid var(--red); padding-left:12px;
+}
+
+.body{padding:32px 44px 44px;}
+
+/* 목차 */
+.toc{
+  background:linear-gradient(135deg,#f7f8fa 0%,#fff 100%);
+  border:1px solid var(--border); border-radius:10px;
+  padding:30px 34px; margin:8px 0 40px;
+}
+.toc-ttl{
+  font-size:17px; font-weight:800; color:var(--navy); letter-spacing:0.5px;
+  margin-bottom:22px; padding-bottom:12px; border-bottom:2px solid var(--navy);
+}
+.toc ol{
+  margin:0; padding:0; list-style:none; counter-reset:toc;
+}
+.toc li{
+  font-size:15px; color:var(--text2); margin-bottom:16px; break-inside:avoid;
+  padding-left:40px; position:relative; line-height:1.4;
+  padding-bottom:14px; border-bottom:1px dashed var(--border);
+}
+.toc li:last-child{margin-bottom:0; padding-bottom:0; border-bottom:none;}
+.toc li::before{
+  counter-increment:toc; content:counter(toc);
+  position:absolute; left:0; top:-2px; width:26px; height:26px;
+  background:var(--navy); color:#fff; border-radius:7px;
+  display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;
+}
+.toc a{color:var(--text2); text-decoration:none; font-weight:600;}
+.toc a:hover{color:var(--red);}
+
+/* 섹션 */
+section{margin-bottom:30px; break-inside:avoid;}
+h2{
+  font-size:18px; font-weight:800; color:var(--navy); margin:0 0 14px;
+  padding-bottom:8px; border-bottom:2px solid var(--navy);
+  display:flex; align-items:center; gap:10px;
+}
+h2 .num{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:26px; height:26px; flex-shrink:0; border-radius:7px;
+  background:var(--red); color:#fff; font-size:13px; font-weight:800;
+}
+h3{font-size:14.5px; font-weight:700; color:var(--navy2); margin:18px 0 8px;}
+p{margin:8px 0;}
+ul,ol{margin:8px 0; padding-left:22px;}
+li{margin:5px 0;}
+strong{color:var(--navy); font-weight:700;}
+code{
+  background:var(--red-light); color:var(--red-dark); font-size:0.9em;
+  padding:1px 6px; border-radius:4px; font-family:Consolas,monospace;
+}
+
+/* 안내 박스 */
+.note{
+  border-radius:8px; padding:12px 16px; margin:14px 0; font-size:13px;
+  border-left:4px solid; line-height:1.6;
+}
+.note.warn{background:var(--위험-bg); border-color:var(--위험-c); color:#7f1d1d;}
+.note.tip{background:var(--안전-bg); border-color:var(--안전-c); color:#14532d;}
+.note.info{background:#eff6ff; border-color:#2563eb; color:#1e3a8a;}
+.note strong{color:inherit;}
+
+/* 표 */
+table{width:100%; border-collapse:collapse; margin:12px 0; font-size:13px;}
+th,td{border:1px solid var(--border); padding:9px 12px; text-align:left; vertical-align:top;}
+th{background:var(--navy); color:#fff; font-weight:700; font-size:12.5px;}
+tr:nth-child(even) td{background:#fafbfc;}
+
+/* 등급 배지 */
+.badge{display:inline-block; padding:2px 9px; border-radius:12px; font-size:12px; font-weight:700;}
+.b-위험{background:var(--위험-bg); color:var(--위험-c);}
+.b-주의{background:var(--주의-bg); color:var(--주의-c);}
+.b-안전{background:var(--안전-bg); color:var(--안전-c);}
+
+/* 단계 목록 */
+ol.steps{counter-reset:step; list-style:none; padding-left:0;}
+ol.steps>li{position:relative; padding-left:34px; margin-bottom:10px;}
+ol.steps>li::before{
+  counter-increment:step; content:counter(step);
+  position:absolute; left:0; top:1px; width:23px; height:23px;
+  background:var(--navy2); color:#fff; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;
+}
+
+.foot{
+  text-align:center; color:var(--text3); font-size:11px;
+  border-top:1px solid var(--border); padding-top:18px; margin-top:36px;
+}
+
+/* 인쇄 버튼 (화면에서만) */
+.print-bar{
+  max-width:840px; margin:0 auto 16px; display:flex; justify-content:flex-end; gap:10px;
+}
+.print-btn{
+  background:var(--red); color:#fff; border:none; border-radius:8px;
+  padding:11px 20px; font-size:13.5px; font-weight:700; cursor:pointer;
+  font-family:var(--font); box-shadow:0 4px 10px rgba(200,16,46,0.25);
+}
+.print-btn:hover{background:var(--red-dark);}
+.print-hint{font-size:11.5px; color:var(--text3); align-self:center;}
+
+@media print{
+  body{background:#fff; padding:0; font-size:12px;}
+  .page{border:none; box-shadow:none; border-radius:0; max-width:none;}
+  .print-bar{display:none;}
+  .cover{border-radius:0;}
+  section{page-break-inside:avoid;}
+  h2{page-break-after:avoid;}
+  a{color:inherit; text-decoration:none;}
+  @page{margin:14mm;}
+}
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <span class="print-hint">버튼을 누르고 인쇄 대화상자에서 ‘대상 → PDF로 저장’을 고르면 PDF가 됩니다.</span>
+  <button class="print-btn" onclick="window.print()">🖨 인쇄 / PDF로 저장</button>
+</div>
+
+<div class="page">
+  <!-- 표지 -->
+  <div class="cover">
+    <div class="cover-tag">USER GUIDE</div>
+    <h1>이랜드그룹 리스크 관리 시스템</h1>
+    <div class="sub">사용 안내서 · Risk Monitoring &amp; Analytics Platform</div>
+    <div class="lead">
+      처음 쓰시는 분도 이 문서만 따라오시면 가입부터 보고서 다운로드까지 모두 하실 수 있습니다.<br>
+      화면 왼쪽의 메뉴(사이드바)를 기준으로 설명합니다.
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- 목차 -->
+    <div class="toc">
+      <div class="toc-ttl">목차</div>
+      <ol>
+        <li><a href="#s1">시작하기 — 회원가입과 로그인</a></li>
+        <li><a href="#s2">화면 구성 한눈에 보기</a></li>
+        <li><a href="#s3">대시보드 보는 법</a></li>
+        <li><a href="#s4">모니터링값 등록하기</a></li>
+        <li><a href="#s5">등록 내용 보기·고치기</a></li>
+        <li><a href="#s6">등급 자동 산정 기준</a></li>
+        <li><a href="#s7">AI 분석 사용하기</a></li>
+        <li><a href="#s8">보고서 내려받기 (PPT)</a></li>
+        <li><a href="#s9">관리자용 — 회원 관리</a></li>
+        <li><a href="#s10">자주 묻는 질문 (FAQ)</a></li>
+      </ol>
+    </div>
+
+    <!-- 1 -->
+    <section id="s1">
+      <h2><span class="num">1</span>시작하기 — 회원가입과 로그인</h2>
+
+      <h3>1-1. 회원가입 (처음 한 번만)</h3>
+      <ol class="steps">
+        <li>접속하면 <strong>로그인 화면</strong>이 나옵니다.</li>
+        <li>위쪽의 <strong>[회원가입]</strong> 탭을 누릅니다.</li>
+        <li>아래 항목을 입력합니다. (별표 <code>*</code>는 필수)
+          <ul>
+            <li><strong>성명 *</strong> / <strong>사번 *</strong></li>
+            <li><strong>소속 계열사 *</strong> — 패션 / 유통 / 외식 / 파크 / 건설 / 소법인 / 기타 중 선택</li>
+            <li><strong>부서 *</strong></li>
+            <li><strong>이메일 *</strong> — 로그인할 때 쓰는 아이디입니다</li>
+            <li><strong>비밀번호 *</strong> — 6자 이상, 한 번 더 입력해 확인</li>
+          </ul>
+        </li>
+        <li><strong>[가입 신청]</strong> 버튼을 누릅니다.</li>
+        <li>“<strong>관리자 승인 대기 중</strong>” 화면이 나오면 신청 완료입니다.</li>
+      </ol>
+      <div class="note warn">⚠️ <strong>가입 직후에는 바로 로그인할 수 없습니다.</strong> 관리자가 승인해야 이용할 수 있습니다.</div>
+
+      <h3>1-2. 승인 기다리기</h3>
+      <ul>
+        <li>관리자가 승인하면 별도 알림 없이 로그인이 가능해집니다.</li>
+        <li>승인 전에 로그인하면 다시 “승인 대기 중” 화면이 나옵니다. 조금 기다렸다 다시 시도해 주세요.</li>
+        <li>급할 경우 관리자(가비님)에게 직접 승인을 요청하세요.</li>
+      </ul>
+
+      <h3>1-3. 로그인</h3>
+      <ol class="steps">
+        <li><strong>[로그인]</strong> 탭에서 <strong>이메일</strong>과 <strong>비밀번호</strong>를 입력합니다.</li>
+        <li><strong>[로그인]</strong> 버튼을 누르면 메인 화면(대시보드)으로 들어갑니다.</li>
+        <li>로그아웃은 화면 우측 상단(또는 메뉴)의 <strong>로그아웃</strong>을 누르면 됩니다.</li>
+      </ol>
+    </section>
+
+    <!-- 2 -->
+    <section id="s2">
+      <h2><span class="num">2</span>화면 구성 한눈에 보기</h2>
+      <p>왼쪽 사이드바 메뉴는 다음과 같습니다.</p>
+      <table>
+        <thead><tr><th style="width:38%">메뉴</th><th>하는 일</th></tr></thead>
+        <tbody>
+          <tr><td><strong>전사 8대 리스크 관리 현황</strong></td><td>전체/계열사별 현황을 한눈에 보는 대시보드 (첫 화면)</td></tr>
+          <tr><td><strong>모니터링 리스트</strong></td><td>등록된 리스크를 표로 보고, 수정·삭제</td></tr>
+          <tr><td><strong>데이터 입력</strong></td><td>리스크를 새로 등록 (한 건씩 또는 엑셀 일괄)</td></tr>
+          <tr><td><strong>AI 분석</strong></td><td>데이터를 바탕으로 AI가 위험도·추세·액션플랜 등을 분석</td></tr>
+          <tr><td><strong>보고서 다운로드</strong></td><td>현황을 PPT 보고서로 내려받기</td></tr>
+          <tr><td><strong>회원 관리</strong></td><td>(관리자만 보임) 가입 승인·관리</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>사이드바의 <strong>계열사 이름 옆 숫자</strong>는 그 계열사에 등록된 리스크 건수입니다.</li>
+        <li>계열사 이름을 누르면 그 계열사만 따로 볼 수 있고, <strong>전사 8대 리스크 관리 현황</strong>을 누르면 전체로 돌아옵니다.</li>
+      </ul>
+    </section>
+
+    <!-- 3 -->
+    <section id="s3">
+      <h2><span class="num">3</span>대시보드 보는 법 (전사 8대 리스크 관리 현황)</h2>
+      <p>첫 화면에서 전체 또는 선택한 계열사의 현황을 봅니다.</p>
+      <ul>
+        <li><strong>상단 KPI 카드</strong> — 등급별(<span class="badge b-위험">위험</span> <span class="badge b-주의">주의</span> <span class="badge b-안전">안전</span>) 건수와 비율</li>
+        <li><strong>월별 모니터링 추이</strong> — 시간에 따른 등록 추이 그래프</li>
+        <li><strong>리스크 영역별 현황</strong> — 8대 리스크 영역별 분포</li>
+        <li><strong>계열사별 / 브랜드별 현황</strong> — 어디에 리스크가 몰려 있는지</li>
+        <li><strong>위험도별 분류 / 위험 등급 리스크</strong> — 주의해서 봐야 할 항목</li>
+      </ul>
+      <p>상단 필터에서 <strong>등급(전체/위험/주의/안전)</strong> 등을 골라 원하는 것만 볼 수 있습니다.</p>
+      <div class="note tip">💡 <strong>등급(위험/주의/안전)은 직접 입력하지 않습니다.</strong> 시스템이 자동으로 계산합니다. (기준은 아래 6번 참고)</div>
+    </section>
+
+    <!-- 4 -->
+    <section id="s4">
+      <h2><span class="num">4</span>모니터링값 등록하기 (데이터 입력)</h2>
+
+      <h3>4-1. 한 건씩 입력</h3>
+      <p>사이드바 <strong>[데이터 입력]</strong> → “데이터 입력” 카드에서 작성합니다. (별표 <code>*</code>는 필수)</p>
+      <ol class="steps">
+        <li><strong>계열사 *</strong> 를 먼저 고릅니다. → 그 계열사의 <strong>브랜드/조직</strong> 목록이 자동으로 나타납니다.</li>
+        <li><strong>브랜드/조직 *</strong> 선택 (유통 계열사는 <strong>매장</strong> 칸이 추가로 나타나며, 선택사항입니다.)</li>
+        <li><strong>등록일 *</strong> — 기본값은 오늘 날짜</li>
+        <li><strong>영역 대분류 *</strong> 를 고르면 → 관련 <strong>영역 중분류</strong>가 자동으로 나타납니다. (영역 중분류는 선택사항)</li>
+        <li><strong>상태 *</strong> 를 버튼으로 선택합니다.
+          <ul>
+            <li><strong>모니터링</strong> — 점검 완료, 위반 없는 항목</li>
+            <li><strong>위반</strong> — 위반이 확인되어 조치 중인 항목</li>
+            <li><strong>완료</strong> — 위반 적발 및 조치 완료된 항목</li>
+          </ul>
+        </li>
+        <li><strong>건수</strong> — 위에서 고른 상태에 맞춰 라벨이 바뀝니다. (예: “위반 건수”) 해당 건수를 숫자로 입력합니다.</li>
+        <li><strong>리스크명 *</strong> — 제목을 입력</li>
+        <li><strong>현황 / 비고</strong> — 상황 설명·메모 (선택)</li>
+        <li><strong>[저장]</strong> 을 누르면 등록됩니다. 아래 <strong>“최근 입력 내역”</strong>에서 방금 넣은 내용을 확인할 수 있습니다.</li>
+      </ol>
+      <div class="note info">잘못 눌렀다면 <strong>[초기화]</strong> 로 폼을 비울 수 있습니다.</div>
+
+      <h3>4-2. 엑셀로 한꺼번에 올리기 (일괄 업로드)</h3>
+      <p>같은 화면의 <strong>“일괄 업로드 (엑셀)”</strong> 카드를 사용합니다.</p>
+      <ol class="steps">
+        <li><strong>양식 다운로드</strong> 버튼으로 엑셀 양식을 내려받습니다.</li>
+        <li><code>입력</code> 시트의 <strong>2행부터</strong> 데이터를 채웁니다.
+          <ul>
+            <li>계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태는 <strong>드롭다운에서 선택</strong>하세요.</li>
+            <li>브랜드는 계열사를, 영역 중분류는 영역 대분류를 먼저 고르면 선택지가 자동으로 걸러집니다.</li>
+            <li>등록일은 <code>YYYY-MM-DD</code> 형식 (예: 2026-06-01)</li>
+            <li>등급은 입력하지 않습니다 (자동 산정).</li>
+          </ul>
+        </li>
+        <li>저장한 뒤 <strong>엑셀 업로드</strong> 버튼으로 파일을 올립니다.</li>
+        <li>업로드 전에 <strong>검증 결과</strong>(오류가 있는 행 안내)를 확인할 수 있습니다.</li>
+      </ol>
+      <div class="note warn">⚠️ <strong>예전에 받아둔 양식은 쓰지 마세요.</strong> 항목 이름이 바뀌면 “헤더가 양식과 다릅니다” 오류가 납니다. 항상 <strong>최신 양식을 새로 받아</strong> 사용하세요.</div>
+    </section>
+
+    <!-- 5 -->
+    <section id="s5">
+      <h2><span class="num">5</span>등록한 내용 보기·고치기 (모니터링 리스트)</h2>
+      <p>사이드바 <strong>[모니터링 리스트]</strong> 에서 등록된 리스크를 표로 봅니다.</p>
+      <ul>
+        <li>상단 필터로 <strong>계열사 / 영역 대분류 / 영역 중분류 / 등급 / 상태</strong> 별로 골라 볼 수 있습니다.</li>
+        <li>표에는 등록일, 계열사, 브랜드/조직, 리스크명, 등급, 상태, 위반건수, 모니터링건수, 위반율이 나옵니다.</li>
+        <li>각 줄에서 <strong>수정</strong> 또는 <strong>삭제</strong>를 할 수 있습니다.
+          <ul>
+            <li><strong>수정</strong>을 누르면 창이 떠서 내용을 고친 뒤 저장합니다.</li>
+            <li><strong>삭제</strong>는 되돌릴 수 없으니 신중히 사용하세요.</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <!-- 6 -->
+    <section id="s6">
+      <h2><span class="num">6</span>등급은 어떻게 정해지나요? (자동 산정 기준)</h2>
+      <p>등급은 사람이 정하지 않고 다음 기준으로 <strong>자동 계산</strong>됩니다.</p>
+      <table>
+        <thead><tr><th style="width:22%">등급</th><th>해당 조건 (하나라도 맞으면)</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge b-위험">🔴 위험</span></td><td>처리(완료 전)된 지 <strong>14일 이상</strong> 경과 / 같은 위반(브랜드+영역)이 최근 30일 내 <strong>3건 이상</strong> 반복 / 해당 영역의 이번 달 등록이 전월 대비 <strong>10% 이상</strong> 증가</td></tr>
+          <tr><td><span class="badge b-주의">🟠 주의</span></td><td>처리 <strong>7일 이상</strong> 지연 / 같은 위반 <strong>2건 이상</strong> / 전월 대비 <strong>5% 이상</strong> 증가</td></tr>
+          <tr><td><span class="badge b-안전">🟢 안전</span></td><td>위에 해당하지 않음</td></tr>
+        </tbody>
+      </table>
+      <div class="note info">
+        참고: 상태가 <strong>완료</strong>인 항목은 “처리 지연” 계산에서 제외됩니다.<br>
+        ‘위반’으로 집계할 때는 상태가 <strong>위반 + 완료</strong>인 항목을 함께 셉니다.
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section id="s7">
+      <h2><span class="num">7</span>AI 분석 사용하기</h2>
+      <p>사이드바 <strong>[AI 분석]</strong> 에서 데이터를 바탕으로 AI 분석을 받을 수 있습니다.</p>
+      <ol class="steps">
+        <li><strong>계열사 1개</strong>를 고릅니다. (전체 또는 특정 계열사)</li>
+        <li>원하는 <strong>분석 항목</strong>을 골라 체크합니다. (여러 개 선택 가능)
+          <ul><li>위험도 식별 / 트렌드 분석 / 권고 액션 플랜 / 추세·패턴 / 유사 사례 매칭 / 계열사별 비교</li></ul>
+        </li>
+        <li>분석 실행 버튼을 누르면 잠시 후 <strong>분석 결과</strong>가 표시됩니다.</li>
+        <li>결과 위쪽에 사용된 분량(토큰) 정보가 함께 표시됩니다.</li>
+      </ol>
+      <div class="note tip">분석은 등록된 데이터를 요약해 처리하므로, 데이터가 많을수록 더 의미 있는 결과가 나옵니다.</div>
+    </section>
+
+    <!-- 8 -->
+    <section id="s8">
+      <h2><span class="num">8</span>보고서 내려받기 (PPT)</h2>
+      <p>사이드바 <strong>[보고서 다운로드]</strong> 를 누르면 작은 창이 뜹니다.</p>
+      <ol class="steps">
+        <li><strong>계열사</strong>를 고릅니다. (전체 또는 특정 계열사 한 곳)</li>
+        <li><strong>[다운로드]</strong> 를 누르면 PPT 파일이 만들어져 내려받아집니다.</li>
+      </ol>
+      <p>보고서에는 표지, 그룹 KPI, 계열사×8대 리스크 매트릭스, 영역별 상세, 요약 카드 등이 자동으로 들어갑니다.</p>
+    </section>
+
+    <!-- 9 -->
+    <section id="s9">
+      <h2><span class="num">9</span>관리자용 — 회원 관리 (관리자만 보임)</h2>
+      <p>관리자 계정으로 로그인하면 사이드바에 <strong>[회원 관리]</strong> 메뉴가 나타납니다.</p>
+      <ul>
+        <li><strong>가입 신청 (승인 대기)</strong> 목록
+          <ul>
+            <li><strong>[승인]</strong> — 해당 사용자가 로그인할 수 있게 합니다.</li>
+            <li><strong>[삭제]</strong> — 신청을 목록에서 제거합니다. 삭제된 사용자는 로그인할 수 없게 됩니다. (완전히 계정을 없애려면 Supabase 관리 화면에서 별도 처리가 필요합니다.)</li>
+          </ul>
+        </li>
+        <li><strong>승인된 회원</strong> 목록
+          <ul><li><strong>[승인 해제]</strong> — 다시 로그인하지 못하도록 권한을 거둡니다. (재승인하면 다시 가능)</li></ul>
+        </li>
+      </ul>
+    </section>
+
+    <!-- 10 -->
+    <section id="s10">
+      <h2><span class="num">10</span>자주 묻는 질문 (FAQ)</h2>
+      <p><strong>Q. 가입했는데 로그인이 안 돼요.</strong><br>
+      → 관리자 승인 전입니다. 승인되면 로그인할 수 있습니다. 오래 걸리면 관리자에게 문의하세요.</p>
+      <p><strong>Q. 비밀번호를 잊었어요.</strong><br>
+      → 관리자에게 문의하세요.</p>
+      <p><strong>Q. 등급을 직접 바꾸고 싶어요.</strong><br>
+      → 등급은 자동 계산이라 직접 입력하지 않습니다. 상태·건수·등록일 등을 정확히 입력하면 등급이 알맞게 반영됩니다.</p>
+      <p><strong>Q. 엑셀 업로드에서 “헤더가 양식과 다릅니다”가 떠요.</strong><br>
+      → 예전 양식을 쓰셨을 가능성이 큽니다. <strong>양식을 새로 다운로드</strong>해 다시 작성하세요.</p>
+      <p><strong>Q. 모바일에서도 되나요?</strong><br>
+      → 네. 화면이 작으면 왼쪽 위 메뉴 버튼으로 사이드바를 열고 닫을 수 있습니다.</p>
+    </section>
+
+    <div class="foot">이랜드그룹 리스크 관리 시스템 · 사용 안내서</div>
+  </div>
+</div>
+
+</body>
+</html>
