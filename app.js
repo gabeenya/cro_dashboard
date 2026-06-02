@@ -10,6 +10,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let allDiv=[], allBrands=[], allCats=[], allSubs=[], allStores=[], allRisks=[];
 let activeDiv='', editId=null;
 let tChart=null, dChart=null;
+// 대시보드 월 스냅샷: null=현재(라이브). {y,m}=그 달 시점으로 화면 재구성.
+let viewMonth=null;
+let snapshotRisks=null; // viewMonth 기준으로 잘라내고 등급을 재계산한 데이터(라이브면 allRisks)
 let lPage=1; const PER=20;
 let rptFmt='ppt';
 let currentUser=null; // 로그인 사용자 프로필 (인증 게이트 통과 후 채워짐)
@@ -212,6 +215,65 @@ async function loadAll(){
   allRisks.forEach(r=>{ r.grade=computeGrade(r,allRisks); });
   document.getElementById('conn-status').textContent=`데이터 ${data.length}건`;
   updateSidebarBadges();
+  fillMonthFilter();
+  buildSnapshot();
+  renderDash(getFiltered());
+}
+
+// ── 월 스냅샷 ───────────────────────────────
+// viewMonth가 설정되면 "그 달 말일" 시점을 기준(now)으로 삼아
+//   ① 그 달까지 등록된 데이터만 추리고  ② 등급을 그 시점 규칙으로 다시 계산한다.
+// 라이브(현재)일 때는 이미 loadAll에서 계산된 allRisks를 그대로 쓴다.
+function refNow(){
+  if(!viewMonth) return new Date();
+  return new Date(viewMonth.y, viewMonth.m+1, 0, 23,59,59,999); // 선택 월 마지막 순간
+}
+function buildSnapshot(){
+  if(!viewMonth){ snapshotRisks=allRisks; return; }
+  const cutoff=refNow();
+  // 등급을 덮어쓰므로 원본을 건드리지 않도록 얕은 복사본으로 작업
+  const subset=allRisks
+    .filter(r=>r.registered_at && new Date(r.registered_at)<=cutoff)
+    .map(r=>({...r}));
+  subset.forEach(r=>{ r.grade=computeGrade(r,subset,cutoff); });
+  snapshotRisks=subset;
+}
+// 선택 가능한 월 목록: 현재 달 → 데이터가 있는 가장 오래된 달까지 내림차순
+function monthOptionsRange(){
+  const now=new Date();
+  let earliest=new Date(now.getFullYear(), now.getMonth(), 1);
+  allRisks.forEach(r=>{
+    if(!r.registered_at) return;
+    const d=new Date(r.registered_at);
+    if(isNaN(d)) return;
+    const fd=new Date(d.getFullYear(), d.getMonth(), 1);
+    if(fd<earliest) earliest=fd;
+  });
+  const out=[];
+  let cur=new Date(now.getFullYear(), now.getMonth(), 1);
+  while(cur>=earliest){
+    out.push({y:cur.getFullYear(), m:cur.getMonth()});
+    cur=new Date(cur.getFullYear(), cur.getMonth()-1, 1);
+  }
+  return out;
+}
+// 대시보드 상단 월 필터 채우기 (첫 옵션 = 현재/라이브)
+function fillMonthFilter(){
+  const el=document.getElementById('f-month'); if(!el) return;
+  const prev=el.value;
+  const opts=['<option value="">현재(이번달)</option>'];
+  monthOptionsRange().forEach(o=>{
+    opts.push(`<option value="${o.y}-${o.m}">${o.y}.${String(o.m+1).padStart(2,'0')}월</option>`);
+  });
+  el.innerHTML=opts.join('');
+  el.value=prev; // 다시 로드돼도 선택 유지
+}
+// 월 필터 변경 → 스냅샷 다시 만들고 대시보드 갱신
+function onMonthFilterChange(){
+  const v=document.getElementById('f-month')?.value||'';
+  if(v){ const [y,m]=v.split('-').map(Number); viewMonth={y,m}; }
+  else viewMonth=null;
+  buildSnapshot();
   renderDash(getFiltered());
 }
 
@@ -224,8 +286,7 @@ async function loadAll(){
 //         (b) 동일 위반이 최근 30일 내 2건  또는
 //         (c) 동일 영역 대분류 등록이 전월 대비 5% 이상 증가
 //   안전: 위 외
-function computeGrade(r,all){
-  const now=new Date();
+function computeGrade(r,all,now=new Date()){
   const regDate=r.registered_at?new Date(r.registered_at):null;
   const isOpen=r.item_state!=='완료';
   // (a) 처리 지연 일수
@@ -311,7 +372,7 @@ function getFiltered(){
   const brandObj=allBrands.find(b=>b.id==brand);
   const storeApplies = activeDiv==='유통' && brandObj?.name==='리테일';
   const store = storeApplies ? document.getElementById('f-store')?.value : '';
-  return allRisks.filter(r=>{
+  return (snapshotRisks||allRisks).filter(r=>{
     if(activeDiv && r.divisions?.name!==activeDiv) return false;
     if(!activeDiv && div && r.divisions?.id!=div) return false;
     if(brand && r.brands?.id!=brand) return false;
@@ -378,7 +439,7 @@ function renderAlerts(risks){
   // (1) 장기 미해결: 등록 후 N일 경과 + 위반/모니터링 상태
   const days=parseInt(document.getElementById('alert-overdue-days')?.value||'3');
   _alertOverdueDays=days;
-  const cutoff=new Date(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-days);
+  const cutoff=refNow(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-days);
   const overdue=risks.filter(r=>{
     if(!r.registered_at) return false;
     if(r.item_state!=='위반'&&r.item_state!=='모니터링') return false;
@@ -391,7 +452,7 @@ function renderAlerts(risks){
   if(oCard) oCard.classList.toggle('has-alert', overdue.length>0);
 
   // (2) 이상 급증: (계열사 × 영역 대분류) 그룹별 최근 7일 위반 vs 직전 4주 주평균
-  const now=new Date(); now.setHours(0,0,0,0);
+  const now=refNow(); now.setHours(0,0,0,0);
   const recentStart=new Date(now); recentStart.setDate(recentStart.getDate()-7);
   const baselineStart=new Date(now); baselineStart.setDate(baselineStart.getDate()-35);
   const groups={};
@@ -512,8 +573,11 @@ if('serviceWorker' in navigator){
 // ── KPI ────────────────────────────────────
 function renderKPI(risks){
   const t=risks.length;
-  const now=new Date();
+  const now=refNow();
   const thisY=now.getFullYear(), thisM=now.getMonth();
+  // 당월 카드 배지 = 기준 월 (스냅샷이면 연.월, 라이브면 이번달 월번호)
+  const mb=document.getElementById('k-month-badge');
+  if(mb) mb.textContent = viewMonth ? `${thisY}.${String(thisM+1).padStart(2,'0')}월` : `${thisM+1}월`;
 
   // 누적: 위반(위반+완료) / 모니터링(전체)
   const accViol=risks.filter(r=>r.item_state==='위반'||r.item_state==='완료').length;
@@ -565,11 +629,11 @@ function setBar(id,pct,cls){
 
 // ── 추이 차트 ──────────────────────────────
 function renderTrend(risks){
-  const now=new Date();
+  const now=refNow();
   const months=[];
-  // 직전 달부터 12개월 (매월 sliding)
-  for(let i=0;i<12;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()-1+i,1);
+  // 기준 월에서 끝나는 최근 12개월
+  for(let i=11;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
     months.push({label:`${d.getMonth()+1}월`,y:d.getFullYear(),m:d.getMonth()});
   }
   const cnt=m=>risks.filter(r=>{
@@ -1834,7 +1898,22 @@ async function deleteRisk(){
 }
 
 // ── 보고서 ─────────────────────────────────
-function openReportModal(){document.getElementById('report-ov').classList.add('open');}
+function openReportModal(){
+  fillReportMonth();
+  document.getElementById('report-ov').classList.add('open');
+}
+// 보고서 기준 월 채우기 (기본값 = 직전 달)
+function fillReportMonth(){
+  const el=document.getElementById('r-month'); if(!el) return;
+  const months=monthOptionsRange();
+  // 직전 달이 목록에 없으면(이번 달 데이터만 있을 때 등) 직전 달을 앞에 추가
+  const now=new Date();
+  const prev={y:new Date(now.getFullYear(),now.getMonth()-1,1).getFullYear(),
+              m:new Date(now.getFullYear(),now.getMonth()-1,1).getMonth()};
+  if(!months.some(o=>o.y===prev.y&&o.m===prev.m)) months.unshift(prev);
+  el.innerHTML=months.map(o=>`<option value="${o.y}-${o.m}">${o.y}년 ${String(o.m+1).padStart(2,'0')}월</option>`).join('');
+  el.value=`${prev.y}-${prev.m}`; // 기본 선택 = 직전 달
+}
 function closeReportModal(){document.getElementById('report-ov').classList.remove('open');}
 function setFmt(f){ rptFmt=f; }
 function downloadReport(){
@@ -1877,12 +1956,17 @@ async function downloadPPT(){
   if(!allRisks.length){showToast('데이터가 없어 보고서를 만들 수 없습니다');return;}
   showToast('보고서 생성 중...');
   const divFilter=document.querySelector('input[name="r-div"]:checked')?.value||'';
-  const baseRisks=divFilter?allRisks.filter(r=>r.divisions?.name===divFilter):allRisks;
-  const divs=divFilter?allDiv.filter(d=>d.name===divFilter):allDiv;
   const now=new Date();
-  // 전월 = 직전 달
-  const prevD=new Date(now.getFullYear(),now.getMonth()-1,1);
-  const pY=prevD.getFullYear(), pM=prevD.getMonth();
+  // 기준 월: 모달 선택값(없으면 직전 달)
+  const rmVal=document.getElementById('r-month')?.value||'';
+  let pY,pM;
+  if(rmVal){ const a=rmVal.split('-').map(Number); pY=a[0]; pM=a[1]; }
+  else { const d=new Date(now.getFullYear(),now.getMonth()-1,1); pY=d.getFullYear(); pM=d.getMonth(); }
+  // 누적(연누적)은 기준 월 말일까지로 한정 → 보고서 전체가 "그 달 시점" 기준으로 일관됨
+  const baseEnd=new Date(pY,pM+1,0,23,59,59,999);
+  const divScoped=divFilter?allRisks.filter(r=>r.divisions?.name===divFilter):allRisks;
+  const baseRisks=divScoped.filter(r=>r.registered_at && new Date(r.registered_at)<=baseEnd);
+  const divs=divFilter?allDiv.filter(d=>d.name===divFilter):allDiv;
   const prevRisks=rptMonthFilter(baseRisks,pY,pM);
   const prevLabel=`${pY}년 ${String(pM+1).padStart(2,'0')}월 기준`;
   const todayStr=`${now.getFullYear()}. ${now.getMonth()+1}. ${now.getDate()}.`;
@@ -1929,7 +2013,7 @@ async function downloadPPT(){
   // KPI 카드 4개 — 가로 1열
   const kpis=[
     {ttl:'누적 모니터링', big:`${accAll}건`, sub:`위반 ${accV}건 (${accRate}%)`, c:RPT.NAVY},
-    {ttl:'전월 모니터링', big:`${monAll}건`, sub:`위반 ${monV}건 (${monRate}%)`, c:RPT.NAVY2},
+    {ttl:'기준월 모니터링', big:`${monAll}건`, sub:`위반 ${monV}건 (${monRate}%)`, c:RPT.NAVY2},
     {ttl:'처리 완료율',   big:`${doneRate}%`, sub:`완료 ${done} / 위반 ${doneTotal}건`, c:RPT.SAFE_C},
     {ttl:'조치중',        big:`${open}건`,    sub:'위반(처리중) 상태',                   c:RPT.RISK_C}
   ];
@@ -2079,11 +2163,11 @@ async function downloadPPT(){
   });
 
   addMatrixSlide('계열사별 현황 (연누적)', baseRisks);
-  addMatrixSlide('계열사별 현황 (전월)',  prevRisks);
+  addMatrixSlide('계열사별 현황 (기준월)',  prevRisks);
 
-  // ── 슬라이드 5~12: 8대 카테고리 상세 (전월) ─
+  // ── 슬라이드 5~12: 8대 카테고리 상세 (기준월) ─
   function addCatDetailSlide(cat){
-    const sl=pptx.addSlide(); head(sl, `${cat.name} 모니터링 상세 현황`, `${prevLabel} (전월)`);
+    const sl=pptx.addSlide(); head(sl, `${cat.name} 모니터링 상세 현황`, `${prevLabel} (기준월)`);
     const items=prevRisks.filter(r=>r.risk_categories?.id===cat.id);
     const subs=allSubs.filter(s=>s.category_id===cat.id);
     // 컬럼: 세부항목 + 각 계열사(전체|위반) + 소계(전체|위반)
@@ -2149,7 +2233,7 @@ async function downloadPPT(){
   allCats.forEach(addCatDetailSlide);
 
   // ── 슬라이드 13: 영역별 결과 요약 (8개 카드, 전월) ─
-  const s13=pptx.addSlide(); head(s13, '영역별 모니터링 결과 요약', `${prevLabel} (전월)`);
+  const s13=pptx.addSlide(); head(s13, '영역별 모니터링 결과 요약', `${prevLabel} (기준월)`);
   // 4열 × 2행 = 8개
   const sumX0=0.4, sumY0=1.85, sumGapX=0.18, sumGapY=0.22;
   const sumW=(12.53-sumGapX*3)/4, sumH=(5.15-sumGapY)/2;
@@ -2183,7 +2267,7 @@ async function downloadPPT(){
 
   // ── 슬라이드 14~: 계열사별 영역 매트릭스 (전월) ─
   divs.forEach(dv=>{
-    const sl=pptx.addSlide(); head(sl, `${dv.name} 영역별 모니터링 현황`, `${prevLabel} (전월)`);
+    const sl=pptx.addSlide(); head(sl, `${dv.name} 영역별 모니터링 현황`, `${prevLabel} (기준월)`);
     const items=prevRisks.filter(r=>r.divisions?.id===dv.id);
     const a=items.length, v=cViol(items);
     const d=cDone(items), o=cOpen(items);
@@ -2192,7 +2276,7 @@ async function downloadPPT(){
     // 상단 KPI 4개
     const kY=1.75, kH=1.1, kGap=0.15, kW=(12.53-kGap*3)/4;
     const cards=[
-      {ttl:'전월 모니터링', big:`${a}건`,             sub:`위반 ${v}건${a?` (${rPct(v,a)}%)`:''}`, c:RPT.NAVY},
+      {ttl:'기준월 모니터링', big:`${a}건`,             sub:`위반 ${v}건${a?` (${rPct(v,a)}%)`:''}`, c:RPT.NAVY},
       {ttl:'위반 건수',     big:`${v}건`,             sub:`전체 대비 ${a?rPct(v,a):0}%`,           c:RPT.RISK_C},
       {ttl:'처리 완료율',   big:`${dr}%`,             sub:`완료 ${d} / 위반 ${d+o}건`,             c:RPT.SAFE_C},
       {ttl:'조치중',        big:`${o}건`,             sub:'위반(처리중) 상태',                      c:RPT.RISK_C}
@@ -2231,7 +2315,7 @@ async function downloadPPT(){
     sl.addTable(rows,{x:0.4,y:3.1,w:12.53,colW:[7.5,2.5,2.53],border:{type:'solid',pt:0.5,color:RPT.BORDER},rowH:0.32,fontFace:RPT.FONT});
   });
 
-  const ym=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}`;
+  const ym=`${pY}${String(pM+1).padStart(2,'0')}`;
   const fname=`이랜드그룹_리스크관리현황_${divFilter?divFilter+'_':''}${ym}.pptx`;
   await pptx.writeFile({fileName:fname});
   showToast('보고서 다운로드 완료');

@@ -128,6 +128,7 @@
   <!-- 필터바 -->
   <div class="fbar" id="main-fbar">
     <span class="fbar-label">필터</span>
+    <select id="f-month" onchange="onMonthFilterChange()" title="기준 월 — 선택한 달 시점의 대시보드를 봅니다"><option value="">현재(이번달)</option></select>
     <select id="f-div" onchange="applyFilter()"><option value="">전체 계열사</option></select>
     <select id="f-brand" onchange="applyFilter()"><option value="">전체 브랜드/조직</option></select>
     <select id="f-store" onchange="applyFilter()" style="display:none"><option value="">전체 매장</option></select>
@@ -667,6 +668,12 @@
           <label class="r-opt"><input type="radio" name="r-div" value="건설"> 건설</label>
           <label class="r-opt"><input type="radio" name="r-div" value="소법인"> 소법인</label>
         </div>
+      </div>
+
+      <div style="margin-bottom:4px">
+        <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:0.3px;margin-bottom:8px">기준 월 선택</div>
+        <select id="r-month" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--r)"></select>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px">선택한 달을 기준으로 보고서가 생성됩니다(누적은 그 달 말일까지 집계).</div>
       </div>
 
     </div>
