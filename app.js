@@ -2099,32 +2099,35 @@ async function downloadPPT(){
 
   const s3=pptx.addSlide(); head(s3,'계열사 순위','위반+완료 건수 적은 순 → 많은 순');
   const rankHdr=[
-    {text:'순위',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
-    {text:'계열사',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
-    {text:'위반 건수',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
-    {text:'전체 모니터링',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}},
-    {text:'위반율',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}}
+    {text:'순위',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:14}},
+    {text:'계열사',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:14}},
+    {text:'위반 건수',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:14}},
+    {text:'전체 모니터링',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:14}},
+    {text:'위반율',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:14}}
   ];
   const rankRows=[rankHdr];
   divRanks.forEach((d,i)=>{
     const fill=i%2?RPT.BG:RPT.SURF;
     rankRows.push([
-      {text:`${i+1}`, options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:11}},
-      {text:d.name,  options:{bold:true,color:RPT.TEXT, fill,align:'center',valign:'middle',fontSize:12}},
-      {text:`${d.viol}`,  options:{bold:true,color:d.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:13}},
-      {text:`${d.total}`, options:{color:RPT.TEXT, fill,align:'center',valign:'middle',fontSize:11}},
-      {text:`${d.rate}%`, options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:11}}
+      {text:`${i+1}`, options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:15}},
+      {text:d.name,  options:{bold:true,color:RPT.TEXT, fill,align:'center',valign:'middle',fontSize:16}},
+      {text:`${d.viol}`,  options:{bold:true,color:d.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:17}},
+      {text:`${d.total}`, options:{color:RPT.TEXT, fill,align:'center',valign:'middle',fontSize:15}},
+      {text:`${d.rate}%`, options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:15}}
     ]);
   });
+  // 슬라이드가 차 보이도록: 본문 영역(약 1.95~6.95)을 행 수에 맞춰 채움
+  const s3Top=1.95, s3Bottom=6.95;
+  const s3RowH=Math.min(0.9, (s3Bottom-s3Top)/rankRows.length);
   s3.addTable(rankRows,{
-    x:2.0, y:1.85, w:9.33, colW:[1.0, 2.4, 2.0, 2.0, 1.93],
-    border:{type:'solid',pt:0.5,color:RPT.BORDER},
-    rowH:0.5, fontFace:RPT.FONT
+    x:1.17, y:s3Top, w:11.0, colW:[1.3, 3.3, 2.4, 2.4, 1.6],
+    border:{type:'solid',pt:0.75,color:RPT.BORDER},
+    rowH:s3RowH, fontFace:RPT.FONT, valign:'middle'
   });
 
   // ── 슬라이드 4: 계열사별 브랜드 순위 ─────────────────
   // 계열사별 컬럼 (가로 배치), 각 컬럼 안에 브랜드 순위
-  const s4=pptx.addSlide(); head(s4,'계열사별 브랜드 순위','위반+완료 건수 적은 순(위) → 많은 순(아래)');
+  const s4=pptx.addSlide(); head(s4,'계열사별 브랜드/조직 순위','위반+완료 건수 적은 순(위) → 많은 순(아래)');
   const cols=divs;
   const slideW=13.33, margin=0.35, colGap=0.12;
   const colW = (slideW - margin*2 - colGap*(cols.length-1)) / cols.length;
@@ -2161,6 +2164,46 @@ async function downloadPPT(){
     const innerColW=[colW*0.18, colW*0.52, colW*0.30];
     s4.addTable(brandRows,{x,y:startY+0.8,w:colW,colW:innerColW,rowH:0.34,border:{type:'solid',pt:0.4,color:RPT.BORDER},fontFace:RPT.FONT});
   });
+
+  // ── 슬라이드 4-1: 매장별 순위 (유통 · 리테일) ─────────────
+  // 매장(store)은 유통 전용 → 전체/유통 보고서일 때만, 매장 데이터가 있을 때만 추가
+  if(divFilter==='' || divFilter==='유통'){
+    const distDiv=allDiv.find(d=>d.name==='유통');
+    const distStores=distDiv?allStores.filter(s=>s.division_id===distDiv.id):[];
+    if(distStores.length){
+      const storeRanks=distStores.map(s=>{
+        const items=baseRisks.filter(r=>r.store_id===s.id);
+        const viol=cViol(items);
+        return {name:s.name, viol, total:items.length, rate:rPct(viol,items.length)};
+      }).sort((a,b)=> b.viol-a.viol || b.total-a.total); // 위반 많은 순
+      const sS=pptx.addSlide(); head(sS,'매장별 순위 (유통 · 리테일)','위반+완료 건수 많은 순');
+      // 전체 매장을 좌우 2열로 분할
+      const half=Math.ceil(storeRanks.length/2);
+      const colsData=[storeRanks.slice(0,half), storeRanks.slice(half)];
+      const mTop=1.85, mBottom=7.0;
+      const mRowH=Math.min(0.34,(mBottom-mTop)/(half+1));
+      const mX0=0.4, mGap=0.41, mColW=(13.33-mX0*2-mGap)/2;
+      const mInner=[mColW*0.12, mColW*0.46, mColW*0.16, mColW*0.13, mColW*0.13];
+      const mHdr=()=>['순위','매장','위반','전체','위반율'].map((t,i)=>
+        ({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:i===1?'left':'center',valign:'middle',fontSize:9}}));
+      colsData.forEach((data,ci)=>{
+        const rows=[mHdr()];
+        data.forEach((s,i)=>{
+          const rank=ci*half+i+1;
+          const fill=i%2?RPT.BG:RPT.SURF;
+          rows.push([
+            {text:`${rank}`,options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:8}},
+            {text:s.name,options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:8}},
+            {text:String(dash(s.viol)),options:{bold:!!s.viol,color:s.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:8}},
+            {text:String(s.total),options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:8}},
+            {text:`${s.rate}%`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:8}}
+          ]);
+        });
+        const x=mX0+ci*(mColW+mGap);
+        sS.addTable(rows,{x,y:mTop,w:mColW,colW:mInner,rowH:mRowH,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle'});
+      });
+    }
+  }
 
   addMatrixSlide('계열사별 현황 (연누적)', baseRisks);
   addMatrixSlide('계열사별 현황 (기준월)',  prevRisks);
