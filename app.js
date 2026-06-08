@@ -1218,13 +1218,43 @@ async function runAIAnalysis(){
       resEl.innerHTML = `<div class="ai-err"><b>분석 실패 (HTTP ${r.status})</b><br>${escapeHTML(err)}</div>`;
       return;
     }
-    const data = await r.json();
-    const md = data.analysis || '(빈 응답)';
-    const html = (typeof marked!=='undefined') ? marked.parse(md) : md.replace(/\n/g,'<br>');
-    resEl.innerHTML = `<div class="ai-md">${html}</div>`;
-    if(data.usage){
-      const tk = (data.usage.input_tokens||0) + (data.usage.output_tokens||0);
-      document.getElementById('ai-meta').textContent = `토큰 ${tk.toLocaleString()} · ${data.model||''}`;
+    // 스트리밍(SSE) 응답을 실시간으로 받아 화면에 흐르게 표시
+    resEl.innerHTML = '<div class="ai-md"></div>';
+    const mdEl = resEl.querySelector('.ai-md');
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf='', md='', model='', inTok=0, outTok=0, lastRender=0;
+    const render = ()=>{ mdEl.innerHTML = (typeof marked!=='undefined') ? marked.parse(md) : md.replace(/\n/g,'<br>'); };
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      buf += decoder.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();  // 마지막 미완성 줄은 다음 청크와 합치려고 보관
+      for(const line of lines){
+        const t=line.trim();
+        if(!t.startsWith('data:')) continue;
+        const payload=t.slice(5).trim();
+        if(!payload || payload==='[DONE]') continue;
+        let ev; try{ ev=JSON.parse(payload); }catch{ continue; }
+        if(ev.type==='content_block_delta' && ev.delta?.type==='text_delta'){
+          md += ev.delta.text;
+          const now=Date.now();
+          if(now-lastRender>60){ render(); lastRender=now; }  // 60ms마다만 다시 그려 부드럽게
+        } else if(ev.type==='message_start'){
+          model = ev.message?.model || model;
+          inTok = ev.message?.usage?.input_tokens || inTok;
+        } else if(ev.type==='message_delta'){
+          outTok = ev.usage?.output_tokens || outTok;
+        } else if(ev.type==='error'){
+          md += `\n\n_(오류: ${ev.error?.message||'알 수 없음'})_`;
+        }
+      }
+    }
+    render();  // 남은 내용 마지막으로 한 번 더 반영
+    if(!md.trim()) mdEl.innerHTML = '(빈 응답)';
+    if(inTok||outTok){
+      document.getElementById('ai-meta').textContent = `토큰 ${(inTok+outTok).toLocaleString()} · ${model}`;
     }
   } catch(e){
     resEl.innerHTML = `<div class="ai-err"><b>호출 오류</b><br>${escapeHTML(String(e.message||e))}</div>`;
