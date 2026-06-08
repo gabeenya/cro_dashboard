@@ -2347,29 +2347,31 @@ async function downloadPPT(){
         return {name:s.name, viol, total:items.length, rate:rPct(viol,items.length)};
       }).sort((a,b)=> b.viol-a.viol || b.total-a.total);
       if(storeRanks.length){
-        const mTop=1.85, mBottom=7.0;
+        // 표를 위로 올리고(mTop↓), 행 수가 많으면 글자를 줄여 슬라이드를 벗어나지 않게 함
+        const mTop=1.6, mBottom=7.05;
         const half=Math.ceil(storeRanks.length/2);
         const colsData=[storeRanks.slice(0,half), storeRanks.slice(half)];
-        const mRowH=Math.min(0.4,(mBottom-mTop)/(half+1));
+        const mRowH=Math.min(0.42,(mBottom-mTop)/(half+1));
+        const fs = mRowH>=0.34?9 : mRowH>=0.27?8 : mRowH>=0.22?7:6;
         const mX0=0.4, mGap=0.41, mColW=(13.33-mX0*2-mGap)/2;
         const mInner=[mColW*0.12, mColW*0.46, mColW*0.16, mColW*0.13, mColW*0.13];
         const mHdr=()=>['순위','매장','위반건수','전체','위반율'].map((t,i)=>
-          ({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:i===1?'left':'center',valign:'middle',fontSize:10}}));
+          ({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:i===1?'left':'center',valign:'middle',fontSize:fs}}));
         colsData.forEach((data,ci)=>{
           const rows=[mHdr()];
           data.forEach((s,i)=>{
             const rank=ci*half+i+1;
             const fill=i%2?RPT.BG:RPT.SURF;
             rows.push([
-              {text:`${rank}`,options:{bold:true,color:RANK_C,fill,align:'center',valign:'middle',fontSize:9}},
-              {text:s.name,options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
-              {text:String(dash(s.viol)),options:{bold:!!s.viol,color:s.viol?VIOL_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:9}},
-              {text:String(s.total),options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
-              {text:`${s.rate}%`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:9}}
+              {text:`${rank}`,options:{bold:true,color:RANK_C,fill,align:'center',valign:'middle',fontSize:fs}},
+              {text:s.name,options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:fs}},
+              {text:String(dash(s.viol)),options:{bold:!!s.viol,color:s.viol?VIOL_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:fs}},
+              {text:String(s.total),options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:fs}},
+              {text:`${s.rate}%`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:fs}}
             ]);
           });
           const x=mX0+ci*(mColW+mGap);
-          sl.addTable(rows,{x,y:mTop,w:mColW,colW:mInner,rowH:mRowH,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle'});
+          sl.addTable(rows,{x,y:mTop,w:mColW,colW:mInner,rowH:mRowH,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle',autoPage:false});
         });
       } else {
         sl.addText('(리테일 매장 데이터 없음)',{x:0.4,y:3.0,w:12.5,h:0.4,fontSize:11,color:RPT.TEXT3,italic:true,align:'center',fontFace:RPT.FONT});
