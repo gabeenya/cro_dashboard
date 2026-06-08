@@ -270,6 +270,14 @@ ol.steps>li::before{
         <li><strong>위험도별 분류 / 위험 등급 리스크</strong> — 주의해서 봐야 할 항목</li>
       </ul>
       <p>상단 필터에서 <strong>등급(전체/위험/주의/안전)</strong> 등을 골라 원하는 것만 볼 수 있습니다.</p>
+
+      <h3>알림 카드 (장기 미해결 / 이상 급증 영역)</h3>
+      <p>대시보드 상단에 주의가 필요한 상황을 자동으로 짚어주는 알림 카드 2개가 있습니다. 카드를 누르면 해당 항목 목록이 뜹니다.</p>
+      <ul>
+        <li><strong>⏰ 장기 미해결</strong> — 등록 후 일정 기간이 지났는데 아직 <strong>완료되지 않은</strong>(위반/모니터링 상태) 항목 수입니다. 카드 안의 드롭다운에서 기준 일수(<strong>3 / 7 / 14 / 30일</strong>, 기본 3일)를 바꿀 수 있습니다.</li>
+        <li><strong>📈 이상 급증 영역</strong> — <strong>(계열사 × 영역 대분류)</strong> 묶음별로, <strong>최근 1개월 위반 건수</strong>가 <strong>전월 1개월 대비 20% 이상 증가</strong>했고 동시에 <strong>최근 1개월 위반이 3건 이상</strong>인 영역의 수입니다. (작은 숫자 변동으로 인한 오탐을 막기 위해 3건 미만은 제외)</li>
+      </ul>
+
       <div class="note tip">💡 <strong>등급(위험/주의/안전)은 직접 입력하지 않습니다.</strong> 시스템이 자동으로 계산합니다. (기준은 아래 6번 참고)</div>
     </section>
 
@@ -291,9 +299,15 @@ ol.steps>li::before{
             <li><strong>완료</strong> — 위반 적발 및 조치 완료된 항목</li>
           </ul>
         </li>
-        <li><strong>건수</strong> — 위에서 고른 상태에 맞춰 라벨이 바뀝니다. (예: “위반 건수”) 해당 건수를 숫자로 입력합니다.</li>
+        <li><strong>건수 *</strong> — 위에서 고른 상태에 맞춰 라벨이 바뀝니다. (예: “위반 건수”) 해당 건수를 숫자로 <strong>반드시</strong> 입력합니다. (필수)</li>
         <li><strong>리스크명 *</strong> — 제목을 입력</li>
-        <li><strong>현황 / 비고</strong> — 상황 설명·메모 (선택)</li>
+        <li><strong>조치사항</strong> — 드롭다운에서 고릅니다. (선택)
+          <ul>
+            <li><strong>징계</strong> 선택 시 → <strong>이름 · 양형</strong> 입력란이 나타납니다.</li>
+            <li><strong>징계 외</strong> 선택 시 → <strong>조치 내용</strong>(자유 입력)란이 나타납니다.</li>
+          </ul>
+        </li>
+        <li><strong>비고</strong> — 추가 메모 (선택)</li>
         <li><strong>[저장]</strong> 을 누르면 등록됩니다. 아래 <strong>“최근 입력 내역”</strong>에서 방금 넣은 내용을 확인할 수 있습니다.</li>
       </ol>
       <div class="note info">잘못 눌렀다면 <strong>[초기화]</strong> 로 폼을 비울 수 있습니다.</div>
@@ -304,9 +318,11 @@ ol.steps>li::before{
         <li><strong>양식 다운로드</strong> 버튼으로 엑셀 양식을 내려받습니다.</li>
         <li><code>입력</code> 시트의 <strong>2행부터</strong> 데이터를 채웁니다.
           <ul>
-            <li>계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태는 <strong>드롭다운에서 선택</strong>하세요.</li>
+            <li>계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분은 <strong>드롭다운에서 선택</strong>하세요.</li>
             <li>브랜드는 계열사를, 영역 중분류는 영역 대분류를 먼저 고르면 선택지가 자동으로 걸러집니다.</li>
             <li>등록일은 <code>YYYY-MM-DD</code> 형식 (예: 2026-06-01)</li>
+            <li><strong>건수</strong>는 0 이상 숫자로 <strong>반드시</strong> 입력합니다. (필수)</li>
+            <li><strong>조치사항</strong>: 조치구분이 <code>징계</code>면 <strong>이름 · 양형</strong>, <code>징계 외</code>면 <strong>조치내용</strong>을 적습니다. (선택)</li>
             <li>등급은 입력하지 않습니다 (자동 산정).</li>
           </ul>
         </li>

@@ -1245,7 +1245,7 @@ function selectState(prefix,val){
   });
   if(prefix==='p'){
     const lb=document.getElementById('p-cnt-lb');
-    if(lb) lb.textContent=val?val+' 건수':'건수';
+    if(lb) lb.textContent=(val?val+' 건수':'건수')+' *';
   }
 }
 
@@ -1291,19 +1291,79 @@ function onPCat(){
   el.innerHTML='<option value="">없음</option>';
   subs.forEach(s=>{el.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});
 }
+// 조치사항 구분 선택 시 추가 입력란 표시/숨김 (prefix: p / m / ie)
+function onAction(prefix){
+  const t=document.getElementById(prefix+'-action').value;
+  document.getElementById(prefix+'-action-name-wrap').classList.toggle('hidden-fg', t!=='징계');
+  document.getElementById(prefix+'-action-penalty-wrap').classList.toggle('hidden-fg', t!=='징계');
+  document.getElementById(prefix+'-action-other-wrap').classList.toggle('hidden-fg', t!=='징계 외');
+}
+function onPAction(){ onAction('p'); }
+// 조치사항 입력값들을 status 컬럼에 저장할 하나의 텍스트로 합친다.
+//   징계   → "[징계] 이름: ○○○ / 양형: ○○○"
+//   징계 외 → "[징계 외] ○○○"
+function buildActionStatus(type,name,penalty,other){
+  if(type==='징계'){
+    const parts=[];
+    if(name) parts.push('이름: '+name);
+    if(penalty) parts.push('양형: '+penalty);
+    return '[징계]'+(parts.length?' '+parts.join(' / '):'');
+  }
+  if(type==='징계 외'){
+    return '[징계 외]'+(other?' '+other:'');
+  }
+  return null;
+}
+// status 합성 텍스트를 조치사항 입력값으로 되돌린다 (수정 화면 채우기용).
+// 옛 자유텍스트(접두사 없음)는 내용 보존을 위해 '징계 외'의 조치내용으로 흡수한다.
+function parseActionStatus(status){
+  const s=String(status||'').trim();
+  if(s.startsWith('[징계 외]')) return {type:'징계 외',name:'',penalty:'',other:s.slice('[징계 외]'.length).trim()};
+  if(s.startsWith('[징계]')){
+    let name='',penalty='';
+    s.slice('[징계]'.length).trim().split('/').forEach(part=>{
+      const p=part.trim();
+      if(p.startsWith('이름:')) name=p.slice('이름:'.length).trim();
+      else if(p.startsWith('양형:')) penalty=p.slice('양형:'.length).trim();
+    });
+    return {type:'징계',name,penalty,other:''};
+  }
+  return s ? {type:'징계 외',name:'',penalty:'',other:s} : {type:'',name:'',penalty:'',other:''};
+}
+// 수정 화면(prefix)에서 조치사항 입력란을 status 값으로 채운다.
+function fillActionFields(prefix,status){
+  const a=parseActionStatus(status);
+  document.getElementById(prefix+'-action').value=a.type;
+  document.getElementById(prefix+'-action-name').value=a.name;
+  document.getElementById(prefix+'-action-penalty').value=a.penalty;
+  document.getElementById(prefix+'-action-other').value=a.other;
+  onAction(prefix);
+}
+// 수정 화면(prefix)의 조치사항 입력값을 합성 텍스트로 반환한다.
+function buildActionFromForm(prefix){
+  return buildActionStatus(
+    document.getElementById(prefix+'-action').value,
+    document.getElementById(prefix+'-action-name').value.trim(),
+    document.getElementById(prefix+'-action-penalty').value.trim(),
+    document.getElementById(prefix+'-action-other').value.trim()
+  );
+}
 function resetInput(){
   ['p-div','p-brand','p-cat','p-sub','p-store'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
-  ['p-title','p-status','p-note'].forEach(i=>document.getElementById(i).value='');
+  ['p-title','p-note','p-action-name','p-action-penalty','p-action-other'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   document.getElementById('p-cnt').value='';
   document.getElementById('p-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('p-brand').innerHTML='<option value="">계열사 먼저 선택</option>';
   document.getElementById('p-sub').innerHTML='<option value="">없음</option>';
   const psw=document.getElementById('p-store-wrap'); if(psw) psw.classList.add('hidden-fg');
+  // 조치사항 초기화
+  const pa=document.getElementById('p-action'); if(pa) pa.value='';
+  ['p-action-name-wrap','p-action-penalty-wrap','p-action-other-wrap'].forEach(i=>{const el=document.getElementById(i);if(el)el.classList.add('hidden-fg');});
   document.getElementById('p-state').value='';
   ['모니터링','위반','완료'].forEach(s=>{
     const el=document.getElementById('ps-'+s); if(el) el.className='state-opt';
   });
-  const cntLb=document.getElementById('p-cnt-lb'); if(cntLb) cntLb.textContent='건수';
+  const cntLb=document.getElementById('p-cnt-lb'); if(cntLb) cntLb.textContent='건수 *';
 }
 async function saveInput(){
   const divId=document.getElementById('p-div').value;
@@ -1314,11 +1374,17 @@ async function saveInput(){
   const state=document.getElementById('p-state').value;
   const date=document.getElementById('p-date').value;
   const title=document.getElementById('p-title').value.trim();
-  const status=document.getElementById('p-status').value.trim();
   const note=document.getElementById('p-note').value.trim();
   const cnt=document.getElementById('p-cnt').value;
-  if(!divId||!brandId||!catId||!state||!date||!title){showToast('필수 항목(*)을 모두 입력해주세요');return;}
-  const cntVal=cnt!==''?parseInt(cnt):null;
+  // 조치사항 합성 (status 컬럼에 저장)
+  const status=buildActionStatus(
+    document.getElementById('p-action').value,
+    document.getElementById('p-action-name').value.trim(),
+    document.getElementById('p-action-penalty').value.trim(),
+    document.getElementById('p-action-other').value.trim()
+  );
+  if(!divId||!brandId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
+  const cntVal=parseInt(cnt);
   const btn=document.getElementById('p-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
   // grade는 자동 산정값으로 덮어씀. 저장 시 임시 '안전'으로 넣고 loadAll에서 재계산.
@@ -1369,7 +1435,12 @@ async function downloadBulkTemplate(){
     {header:'영역 대분류 *',key:'cat',width:20},
     {header:'영역 중분류',key:'sub',width:24},
     {header:'리스크명 *',key:'title',width:36},
-    {header:'상태 *',key:'state',width:12}
+    {header:'상태 *',key:'state',width:12},
+    {header:'건수 *',key:'cnt',width:10},
+    {header:'조치구분(징계/징계 외)',key:'actType',width:22},
+    {header:'이름(징계 시)',key:'actName',width:16},
+    {header:'양형(징계 시)',key:'actPen',width:18},
+    {header:'조치내용(징계 외 시)',key:'actOther',width:30}
   ];
   const hdr=ws.getRow(1);
   hdr.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
@@ -1389,10 +1460,14 @@ async function downloadBulkTemplate(){
   // C열: 상태
   ref.getCell('C1').value='__상태__';
   ['모니터링','위반','완료'].forEach((s,i)=>{ ref.getCell(`C${i+2}`).value=s; });
+  // D열: 조치구분
+  ref.getCell('D1').value='__조치구분__';
+  ['징계','징계 외'].forEach((s,i)=>{ ref.getCell(`D${i+2}`).value=s; });
 
   wb.definedNames.add(`_참조!$A$2:$A$${allDiv.length+1}`,'_divs');
   wb.definedNames.add(`_참조!$B$2:$B$${allCats.length+1}`,'_cats');
   wb.definedNames.add(`_참조!$C$2:$C$4`,'_states');
+  wb.definedNames.add(`_참조!$D$2:$D$3`,'_actions');
 
   // 각 계열사의 브랜드, 각 영역 대분류의 영역 중분류를 가로로 배치
   let col=5; // E열부터
@@ -1424,6 +1499,7 @@ async function downloadBulkTemplate(){
     ws.getCell(`D${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_cats']};
     ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
     ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_states']};
+    ws.getCell(`I${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_actions']};
   }
 
   // 4) 안내 시트
@@ -1433,13 +1509,15 @@ async function downloadBulkTemplate(){
     '[일괄 업로드 사용 안내]',
     '',
     '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
-    '2. 별표(*) 표시 컬럼은 필수입니다.',
-    '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태는 드롭다운에서 선택하세요.',
+    '2. 별표(*) 표시 컬럼은 필수입니다. (건수 포함)',
+    '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분은 드롭다운에서 선택하세요.',
     '4. 브랜드는 계열사를, 영역 중분류는 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
     '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
-    '6. 등급(위험/주의/안전)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
-    '7. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
-    '8. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
+    '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링이면 모니터링 건수, 위반/완료면 위반 건수로 집계)',
+    '7. 조치사항: 조치구분에서 \'징계\'를 고르면 이름·양형을, \'징계 외\'를 고르면 조치내용을 적으세요. (선택 입력)',
+    '8. 등급(위험/주의/안전)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
+    '9. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
+    '10. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
   ];
   lines.forEach((t,i)=>{ guide.getCell(`A${i+1}`).value=t; });
   guide.getCell('A1').font={bold:true,size:14,color:{argb:'FFC8102E'}};
@@ -1485,8 +1563,13 @@ async function handleBulkUpload(ev){
       else if(t.startsWith('영역 중분류')) colMap.sub=colNumber;
       else if(t.startsWith('리스크명')) colMap.title=colNumber;
       else if(t.startsWith('상태')) colMap.state=colNumber;
+      else if(t.startsWith('건수')) colMap.cnt=colNumber;
+      else if(t.startsWith('조치구분')) colMap.actType=colNumber;
+      else if(t.startsWith('이름')) colMap.actName=colNumber;
+      else if(t.startsWith('양형')) colMap.actPen=colNumber;
+      else if(t.startsWith('조치내용')) colMap.actOther=colNumber;
     });
-    const missing=['date','div','brand','cat','title','state'].filter(k=>!colMap[k]);
+    const missing=['date','div','brand','cat','title','state','cnt'].filter(k=>!colMap[k]);
     if(missing.length){
       resultDiv.innerHTML='<div style="color:var(--red);padding:8px 0">헤더가 양식과 다릅니다. 양식을 다시 다운로드해 사용해주세요.</div>';
       return;
@@ -1505,9 +1588,14 @@ async function handleBulkUpload(ev){
       const subName=colMap.sub?String(row.getCell(colMap.sub).value||'').trim():'';
       const title=String(row.getCell(colMap.title).value||'').trim();
       const state=String(row.getCell(colMap.state).value||'').trim();
+      const cntStr=colMap.cnt?String(row.getCell(colMap.cnt).value??'').trim():'';
+      const actType=colMap.actType?String(row.getCell(colMap.actType).value||'').trim():'';
+      const actName=colMap.actName?String(row.getCell(colMap.actName).value||'').trim():'';
+      const actPen=colMap.actPen?String(row.getCell(colMap.actPen).value||'').trim():'';
+      const actOther=colMap.actOther?String(row.getCell(colMap.actOther).value||'').trim():'';
 
       // 전부 비어있으면 skip
-      if(!dateCell&&!divName&&!brandName&&!catName&&!title&&!state) continue;
+      if(!dateCell&&!divName&&!brandName&&!catName&&!title&&!state&&!cntStr) continue;
 
       const errs=[];
 
@@ -1548,6 +1636,15 @@ async function handleBulkUpload(ev){
       if(!title) errs.push('리스크명 누락');
       if(!['모니터링','위반','완료'].includes(state)) errs.push('상태는 모니터링/위반/완료 중 하나');
 
+      // 건수(필수)
+      let cntVal=null;
+      if(cntStr==='') errs.push('건수 누락');
+      else if(isNaN(Number(cntStr))||Number(cntStr)<0) errs.push('건수는 0 이상 숫자');
+      else cntVal=parseInt(cntStr);
+
+      // 조치구분(선택) — 값이 있으면 징계/징계 외만 허용
+      if(actType&&!['징계','징계 외'].includes(actType)) errs.push("조치구분은 '징계' 또는 '징계 외'");
+
       if(errs.length){
         errors.push({row:r, msgs:errs});
       } else {
@@ -1555,7 +1652,9 @@ async function handleBulkUpload(ev){
           division_id:divObj.id, brand_id:brandObj.id, category_id:catObj.id,
           subcategory_id:subObj?subObj.id:null,
           grade:'안전', item_state:state, registered_at:dateStr, title,
-          status:null, note:null, violation_count:null, monitoring_count:null
+          status:buildActionStatus(actType,actName,actPen,actOther), note:null,
+          violation_count:state==='모니터링'?null:cntVal,
+          monitoring_count:state==='모니터링'?cntVal:null
         });
       }
     }
@@ -1672,6 +1771,8 @@ function buildInlineEditRow(r){
   const showStore=r.divisions?.name==='유통' && r.brands?.name==='리테일';
   const stores=showStore?allStores.filter(s=>s.division_id===r.divisions?.id):[];
   const curStoreId=r.store_id||'';
+  const act=parseActionStatus(r.status); // 조치사항 미리 채우기
+  const actOpts=['징계','징계 외'];
   return `<tr class="ier-row"><td colspan="10">
     <div class="ier-form">
       <div class="fg">
@@ -1722,7 +1823,15 @@ function buildInlineEditRow(r){
       <div class="fg"><label class="flb">위반건수</label><input type="number" class="fc" id="ie-viol" value="${r.violation_count??''}" min="0"></div>
       <div class="fg"><label class="flb">모니터링건수</label><input type="number" class="fc" id="ie-mon" value="${r.monitoring_count??''}" min="0"></div>
       <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="ie-title" value="${escapeHTML(r.title||'')}"></div>
-      <div class="fg full"><label class="flb">현황</label><textarea class="fc" id="ie-status">${escapeHTML(r.status||'')}</textarea></div>
+      <div class="fg full"><label class="flb">조치사항</label>
+        <select class="fc" id="ie-action" onchange="onAction('ie')">
+          <option value="">선택 안 함</option>
+          ${actOpts.map(o=>`<option value="${o}" ${o===act.type?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg ${act.type==='징계'?'':'hidden-fg'}" id="ie-action-name-wrap"><label class="flb">이름</label><input type="text" class="fc" id="ie-action-name" value="${escapeHTML(act.name)}" placeholder="대상자 이름"></div>
+      <div class="fg ${act.type==='징계'?'':'hidden-fg'}" id="ie-action-penalty-wrap"><label class="flb">양형</label><input type="text" class="fc" id="ie-action-penalty" value="${escapeHTML(act.penalty)}" placeholder="예: 정직 3개월"></div>
+      <div class="fg full ${act.type==='징계 외'?'':'hidden-fg'}" id="ie-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="ie-action-other" placeholder="조치 내용을 입력하세요">${escapeHTML(act.other)}</textarea></div>
       <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="ie-note">${escapeHTML(r.note||'')}</textarea></div>
       <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">
         <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="deleteInline('${r.id}')">삭제</button>
@@ -1789,7 +1898,7 @@ async function saveInline(id){
   const state=document.getElementById('ie-state').value;
   const date=document.getElementById('ie-date').value;
   const title=document.getElementById('ie-title').value.trim();
-  const status=document.getElementById('ie-status').value.trim();
+  const status=buildActionFromForm('ie');
   const note=document.getElementById('ie-note').value.trim();
   const viol=document.getElementById('ie-viol').value;
   const mon=document.getElementById('ie-mon').value;
@@ -1840,7 +1949,7 @@ function openEdit(id){
   setTimeout(()=>{document.getElementById('m-sub').value=r.risk_subcategories?.id||'';},80);
   document.getElementById('m-date').value=r.registered_at||'';
   document.getElementById('m-title').value=r.title||'';
-  document.getElementById('m-status').value=r.status||'';
+  fillActionFields('m', r.status);
   document.getElementById('m-note').value=r.note||'';
   document.getElementById('m-viol').value=r.violation_count??'';
   document.getElementById('m-mon').value=r.monitoring_count??'';
@@ -1882,7 +1991,7 @@ async function saveModal(){
   const state=document.getElementById('m-state').value;
   const date=document.getElementById('m-date').value;
   const title=document.getElementById('m-title').value.trim();
-  const status=document.getElementById('m-status').value.trim();
+  const status=buildActionFromForm('m');
   const note=document.getElementById('m-note').value.trim();
   const viol=document.getElementById('m-viol').value;
   const mon=document.getElementById('m-mon').value;

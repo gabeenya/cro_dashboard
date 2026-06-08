@@ -415,7 +415,7 @@
             <th>등록일</th><th>계열사</th><th>브랜드/조직</th>
             <th>영역 대분류</th><th>영역 중분류</th><th>리스크명</th>
             <th>등급</th><th>상태</th><th>위반건수</th><th>모니터링건수</th><th>위반율</th>
-            <th>현황</th><th>비고</th><th></th>
+            <th>조치사항</th><th>비고</th><th></th>
           </tr></thead>
           <tbody id="list-body"></tbody>
         </table>
@@ -468,9 +468,19 @@
             <input type="hidden" id="p-state" value="">
           </div>
           <!-- 선택한 상태의 건수 -->
-          <div class="fg full"><label class="flb" id="p-cnt-lb">건수</label><input type="number" class="fc" id="p-cnt" placeholder="상태를 먼저 선택하세요" min="0"></div>
+          <div class="fg full"><label class="flb" id="p-cnt-lb">건수 *</label><input type="number" class="fc" id="p-cnt" placeholder="상태를 먼저 선택하세요" min="0"></div>
           <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="p-title" placeholder="리스크 제목"></div>
-          <div class="fg full"><label class="flb">현황</label><textarea class="fc" id="p-status" placeholder="현재 상황 및 조치 내용"></textarea></div>
+          <!-- 조치사항: 구분 선택 시 아래 추가 입력란이 나타남 -->
+          <div class="fg full"><label class="flb">조치사항</label>
+            <select class="fc" id="p-action" onchange="onPAction()">
+              <option value="">선택 안 함</option>
+              <option value="징계">징계</option>
+              <option value="징계 외">징계 외</option>
+            </select>
+          </div>
+          <div class="fg hidden-fg" id="p-action-name-wrap"><label class="flb">이름</label><input type="text" class="fc" id="p-action-name" placeholder="대상자 이름"></div>
+          <div class="fg hidden-fg" id="p-action-penalty-wrap"><label class="flb">양형</label><input type="text" class="fc" id="p-action-penalty" placeholder="예: 정직 3개월"></div>
+          <div class="fg full hidden-fg" id="p-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="p-action-other" placeholder="조치 내용을 입력하세요"></textarea></div>
           <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="p-note" placeholder="추가 메모"></textarea></div>
           <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end;margin-top:4px">
             <button class="btn" onclick="resetInput()">초기화</button>
@@ -637,7 +647,16 @@
         <div class="fg"><label class="flb">위반건수</label><input type="number" class="fc" id="m-viol" placeholder="0" min="0"></div>
         <div class="fg"><label class="flb">모니터링건수</label><input type="number" class="fc" id="m-mon" placeholder="0" min="0"></div>
         <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="m-title" placeholder="리스크 제목"></div>
-        <div class="fg full"><label class="flb">현황</label><textarea class="fc" id="m-status" placeholder="현재 상황"></textarea></div>
+        <div class="fg full"><label class="flb">조치사항</label>
+          <select class="fc" id="m-action" onchange="onAction('m')">
+            <option value="">선택 안 함</option>
+            <option value="징계">징계</option>
+            <option value="징계 외">징계 외</option>
+          </select>
+        </div>
+        <div class="fg hidden-fg" id="m-action-name-wrap"><label class="flb">이름</label><input type="text" class="fc" id="m-action-name" placeholder="대상자 이름"></div>
+        <div class="fg hidden-fg" id="m-action-penalty-wrap"><label class="flb">양형</label><input type="text" class="fc" id="m-action-penalty" placeholder="예: 정직 3개월"></div>
+        <div class="fg full hidden-fg" id="m-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="m-action-other" placeholder="조치 내용을 입력하세요"></textarea></div>
         <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="m-note" placeholder="추가 메모"></textarea></div>
       </div>
     </div>
