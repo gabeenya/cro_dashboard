@@ -24,7 +24,9 @@
       "Bash(openssl rand *)",
       "Bash(python -c 'import secrets;print\\(secrets.token_hex\\(24\\)\\)')",
       "Bash(echo \"INGEST_SECRET 후보: ingest_$\\(openssl rand -hex 24 2>/dev/null || python -c 'import secrets;print\\(secrets.token_hex\\(24\\)\\)'\\)\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(curl -s -X POST https://ywceavigvleurnzzeqdv.supabase.co/functions/v1/ingest-records -H 'Content-Type: application/json' -H 'x-ingest-secret: ingest_c08353b3349d17caadf87779a6016f5d9602530314931b07' -d '{\"type\":\"INSERT\",\"table\":\"records\",\"schema\":\"public\",\"record\":{\"id\":\"test-9999\",\"date\":\"2026-06-08\",\"type\":\"가맹\",\"subtype\":\"[연동테스트] 필수품목 임의 변경\",\"brand\":\"카페\",\"status\":\"모니터링\",\"count\":3,\"note\":\"[연동테스트] 확인 후 삭제할 가짜 데이터\"}}')",
+      "Bash(curl -s -X POST https://ywceavigvleurnzzeqdv.supabase.co/functions/v1/ingest-records -H 'Content-Type: application/json; charset=utf-8' -H 'x-ingest-secret: ingest_c08353b3349d17caadf87779a6016f5d9602530314931b07' --data-binary @_ingest_test_payload.json)"
     ]
   }
 }
