@@ -20,7 +20,11 @@
       "Bash(cd \"C:\\\\Users\\\\lee_gabeen\\\\Desktop\\\\클로드\\\\cro_dashboard-1\")",
       "Bash(curl -s \"https://registry.npmjs.org/marked\")",
       "Bash(openssl dgst *)",
-      "Bash(curl -s \"https://ywceavigvleurnzzeqdv.supabase.co/rest/v1/brands?select=id,name,division_id&division_id=eq.3&order=name\" -H \"apikey: sb_publishable_Ny1yoy5La-q9Tw7jT6pstg_SV0_fb1a\")"
+      "Bash(curl -s \"https://ywceavigvleurnzzeqdv.supabase.co/rest/v1/brands?select=id,name,division_id&division_id=eq.3&order=name\" -H \"apikey: sb_publishable_Ny1yoy5La-q9Tw7jT6pstg_SV0_fb1a\")",
+      "Bash(openssl rand *)",
+      "Bash(python -c 'import secrets;print\\(secrets.token_hex\\(24\\)\\)')",
+      "Bash(echo \"INGEST_SECRET 후보: ingest_$\\(openssl rand -hex 24 2>/dev/null || python -c 'import secrets;print\\(secrets.token_hex\\(24\\)\\)'\\)\")",
+      "Bash(git add *)"
     ]
   }
 }
