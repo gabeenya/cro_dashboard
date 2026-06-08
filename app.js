@@ -293,12 +293,12 @@ function onMonthFilterChange(){
 
 // ── 등급 자동 산정 ───────────────────────────
 // 규칙:
-//   위험: (a) 등록 후 14일 이상 미완료  또는
-//         (b) 동일 위반(브랜드+영역 대분류+영역 중분류)이 최근 30일 내 3건 이상  또는
-//         (c) 동일 영역 대분류의 이번달 등록 건수가 전월 대비 10% 이상 증가
-//   주의: (a) 등록 후 7일 이상 미완료  또는
-//         (b) 동일 위반이 최근 30일 내 2건  또는
-//         (c) 동일 영역 대분류 등록이 전월 대비 5% 이상 증가
+//   위험: (a) 등록 후 30일 이상 미완료  또는
+//         (b) 동일 위반(브랜드+영역 대분류+영역 중분류)이 최근 30일 내 10건 이상  또는
+//         (c) 동일 영역 대분류의 이번달 등록 건수가 전월 대비 20% 이상 증가
+//   주의: (a) 등록 후 15일 이상 미완료  또는
+//         (b) 동일 위반이 최근 30일 내 5건 이상  또는
+//         (c) 동일 영역 대분류 등록이 전월 대비 10% 이상 증가(20% 미만)
 //   안전: 위 외
 function computeGrade(r,all,now=new Date()){
   const regDate=r.registered_at?new Date(r.registered_at):null;
@@ -333,8 +333,8 @@ function computeGrade(r,all,now=new Date()){
     growth=prevCnt>0?((thisCnt-prevCnt)/prevCnt)*100:(thisCnt>0?100:0);
   }
 
-  if(delayDays>=14||sameRecent>=3||growth>=10) return '위험';
-  if(delayDays>=7 ||sameRecent>=2||growth>=5)  return '주의';
+  if(delayDays>=30||sameRecent>=10||growth>=20) return '위험';
+  if(delayDays>=15||sameRecent>=5 ||growth>=10) return '주의';
   return '안전';
 }
 
@@ -465,10 +465,10 @@ function renderAlerts(risks){
   const oCard=document.querySelector('.ac-overdue');
   if(oCard) oCard.classList.toggle('has-alert', overdue.length>0);
 
-  // (2) 이상 급증: (계열사 × 영역 대분류) 그룹별 최근 7일 위반 vs 직전 4주 주평균
+  // (2) 이상 급증: (계열사 × 영역 대분류) 그룹별 최근 1개월(30일) 위반 vs 전월 1개월(직전 30일)
   const now=refNow(); now.setHours(0,0,0,0);
-  const recentStart=new Date(now); recentStart.setDate(recentStart.getDate()-7);
-  const baselineStart=new Date(now); baselineStart.setDate(baselineStart.getDate()-35);
+  const recentStart=new Date(now); recentStart.setDate(recentStart.getDate()-30);
+  const baselineStart=new Date(now); baselineStart.setDate(baselineStart.getDate()-60);
   const groups={};
   risks.forEach(r=>{
     if(r.item_state!=='위반'&&r.item_state!=='완료') return;
@@ -482,10 +482,9 @@ function renderAlerts(risks){
   });
   const surges=[];
   Object.values(groups).forEach(g=>{
-    const baselineAvg=g.baseline/4;
-    if(g.recent>=3 && g.recent/Math.max(baselineAvg,0.5) >= 1.5){
-      g.baselineAvg=baselineAvg;
-      g.pct=Math.round((g.recent/Math.max(baselineAvg,0.5)-1)*100);
+    // 최근 1개월 위반이 3건 이상이면서, 전월 1개월 대비 20% 이상(=1.2배) 증가
+    if(g.recent>=3 && g.recent/Math.max(g.baseline,1) >= 1.2){
+      g.pct=Math.round((g.recent/Math.max(g.baseline,1)-1)*100);
       surges.push(g);
     }
   });
@@ -540,16 +539,16 @@ function showSurgeModal(){
       <button class="mo-cls" onclick="closeAlertModal()">×</button>
     </div>
     <div class="mo-bd">
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">최근 7일 위반 건수가 직전 4주 주간 평균 대비 <b style="color:#dc2626">50% 이상 증가</b>한 영역 (절대 건수 3건 이상) — <b>${list.length}건</b></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">최근 1개월 위반 건수가 전월 1개월 대비 <b style="color:#dc2626">20% 이상 증가</b>한 영역 (절대 건수 3건 이상) — <b>${list.length}건</b></div>
       <div style="overflow-x:auto">
       <table class="tbl" style="min-width:520px">
-        <thead><tr><th>계열사</th><th>리스크 영역</th><th>최근 7일</th><th>평년 주평균</th><th>증감</th></tr></thead>
+        <thead><tr><th>계열사</th><th>리스크 영역</th><th>최근 1개월</th><th>전월 1개월</th><th>증감</th></tr></thead>
         <tbody>
           ${list.map(g=>`<tr>
             <td>${g.div}</td>
             <td>${g.cat}</td>
             <td style="text-align:center;font-weight:700">${g.recent}건</td>
-            <td style="text-align:center;color:var(--text3)">${g.baselineAvg.toFixed(1)}건</td>
+            <td style="text-align:center;color:var(--text3)">${g.baseline}건</td>
             <td style="font-weight:700;color:#dc2626">+${g.pct}%</td>
           </tr>`).join('')}
         </tbody>
