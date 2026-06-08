@@ -2211,71 +2211,6 @@ async function downloadPPT(){
       rowH:0.32, fontFace:RPT.FONT
     });
   }
-  // ── 슬라이드 2-1 · 2-2: 주요 위험영역 및 조치 현황 ──
-  // 직접 입력할 수 있는 코멘트 상자
-  function commentBox(sl,y,h){
-    sl.addShape('roundRect',{x:0.4,y,w:12.53,h,fill:{color:RPT.BG},line:{color:RPT.BORDER,width:0.75},rectRadius:0.05});
-    sl.addText('코멘트 · 특이사항 (직접 입력)',{x:0.55,y:y+0.08,w:8,h:0.3,fontSize:10,bold:true,color:RPT.TEXT3,fontFace:RPT.FONT});
-  }
-  // (1) 급증 위험 영역: (계열사 × 영역 대분류) 기준월 위반이 전월 대비 20%↑ & 3건↑
-  const _pm=new Date(pY,pM-1,1);
-  const prevPrevRisks=rptMonthFilter(baseRisks,_pm.getFullYear(),_pm.getMonth());
-  const surgeList=[];
-  divs.forEach(dv=>{
-    allCats.forEach(cat=>{
-      const rec=prevRisks.filter(r=>r.divisions?.id===dv.id&&r.risk_categories?.id===cat.id&&isViol(r)).length;
-      const base=prevPrevRisks.filter(r=>r.divisions?.id===dv.id&&r.risk_categories?.id===cat.id&&isViol(r)).length;
-      if(rec>=3 && rec/Math.max(base,1)>=1.2){
-        surgeList.push({div:dv.name,cat:cat.name,recent:rec,baseline:base,pct:Math.round((rec/Math.max(base,1)-1)*100)});
-      }
-    });
-  });
-  surgeList.sort((a,b)=>b.pct-a.pct);
-
-  const slA=pptx.addSlide(); head(slA,'⚠ 주요 위험영역 및 조치 현황 (1) — 급증 위험 영역',`${prevLabel} · 전월 대비 위반 20%↑ & 3건↑`);
-  {
-    const hdr=['계열사','리스크 영역','기준월 위반','전월 위반','증감'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.RED,align:i<2?'left':'center',valign:'middle',fontSize:11}}));
-    const rows=[hdr];
-    surgeList.slice(0,9).forEach((g,i)=>{
-      const fill=i%2?RPT.RISK_BG:RPT.SURF;
-      rows.push([
-        {text:g.div,options:{bold:true,color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:11}},
-        {text:g.cat,options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:11}},
-        {text:`${g.recent}`,options:{bold:true,color:RPT.RED_DARK,fill,align:'center',valign:'middle',fontSize:13}},
-        {text:`${g.baseline}`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:12}},
-        {text:`▲ +${g.pct}%`,options:{bold:true,color:'FFFFFF',fill:RPT.RED,align:'center',valign:'middle',fontSize:13}}
-      ]);
-    });
-    if(!surgeList.length) rows.push([{text:'급증 위험 영역 없음',options:{colspan:5,color:RPT.TEXT3,fill:RPT.SURF,align:'center',italic:true,fontSize:11}}]);
-    slA.addTable(rows,{x:0.4,y:1.7,w:12.53,colW:[2.6,4.5,1.9,1.9,1.63],rowH:0.36,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle'});
-    if(surgeList.length>9) slA.addText(`…외 ${surgeList.length-9}건`,{x:0.4,y:5.2,w:12.5,h:0.3,fontSize:9,color:RPT.TEXT3,fontFace:RPT.FONT});
-    commentBox(slA,5.55,1.45);
-  }
-
-  // (2) 징계 조치 현황: status가 '[징계]'로 시작하는 건 (기준월)
-  const disc=prevRisks.filter(r=>String(r.status||'').startsWith('[징계]'));
-  const slB=pptx.addSlide(); head(slB,'주요 위험영역 및 조치 현황 (2) — 징계 조치 현황',`${prevLabel} · 징계로 조치된 건`);
-  {
-    const hdr=['계열사','브랜드/조직','리스크명','이름','양형','등록일'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:(i>=3&&i<=4)?'center':'left',valign:'middle',fontSize:10}}));
-    const rows=[hdr];
-    disc.slice(0,9).forEach((r,i)=>{
-      const a=parseActionStatus(r.status);
-      const fill=i%2?RPT.BG:RPT.SURF;
-      rows.push([
-        {text:r.divisions?.name||'-',options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
-        {text:r.brands?.name||'-',options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
-        {text:r.title||'-',options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
-        {text:a.name||'-',options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
-        {text:a.penalty||'-',options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
-        {text:r.registered_at||'-',options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:9}}
-      ]);
-    });
-    if(!disc.length) rows.push([{text:'징계 조치 건 없음',options:{colspan:6,color:RPT.TEXT3,fill:RPT.SURF,align:'center',italic:true,fontSize:11}}]);
-    slB.addTable(rows,{x:0.4,y:1.7,w:12.53,colW:[1.7,1.8,3.93,1.6,2.0,1.5],rowH:0.36,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle'});
-    if(disc.length>9) slB.addText(`…외 ${disc.length-9}건`,{x:0.4,y:5.2,w:12.5,h:0.3,fontSize:9,color:RPT.TEXT3,fontFace:RPT.FONT});
-    commentBox(slB,5.55,1.45);
-  }
-
   // ── 슬라이드 3: 계열사 순위 ─────────────────
   // 위반(=위반+완료) 건수 적은 순(위) → 많은 순(아래)
   const divRanks = divs.map(dv=>{
@@ -2312,87 +2247,85 @@ async function downloadPPT(){
     rowH:s3RowH, fontFace:RPT.FONT, valign:'middle'
   });
 
-  // ── 슬라이드 4~: 계열사별 브랜드/조직 순위 (계열사마다 1장) ──
-  const RANK_C=RPT.RED;     // 순위 색 = 붉은색
-  const VIOL_C=RPT.NAVY2;   // 위반건수 색 = 순위와 다르게(네이비)
-  const DIST_MINI=['글로벌','팜앤푸드','킴스','기타']; // 유통: 순위 제외 + 하단 별도 순위
+  // ── 슬라이드 4: 계열사별 브랜드 순위 ─────────────────
+  // 계열사별 컬럼 (가로 배치), 각 컬럼 안에 브랜드 순위
+  const s4=pptx.addSlide(); head(s4,'계열사별 브랜드/조직 순위','위반+완료 건수 적은 순(위) → 많은 순(아래)');
+  const cols=divs;
+  const slideW=13.33, margin=0.35, colGap=0.12;
+  const colW = (slideW - margin*2 - colGap*(cols.length-1)) / cols.length;
+  const startY=1.85;
+  cols.forEach((dv,ci)=>{
+    const x = margin + ci*(colW+colGap);
+    // 컬럼 헤더 = 계열사명
+    const hdrRow=[[
+      {text:dv.name,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',valign:'middle',fontSize:11}}
+    ],[
+      {text:'순위 · 브랜드',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY2,align:'left',valign:'middle',fontSize:9}}
+    ]];
+    s4.addTable(hdrRow,{x,y:startY,w:colW,colW:[colW],rowH:0.4,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT});
 
-  // 표준 순위표 (순위 빨강 / 위반건수 네이비)
-  function rankTable(sl, data, nameHdr, top, bottom){
-    const hdr=['순위',nameHdr,'위반건수','전체','위반율'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:i===1?'center':'center',valign:'middle',fontSize:13}}));
-    const rows=[hdr];
-    data.forEach((d,i)=>{
-      const fill=i%2?RPT.BG:RPT.SURF;
-      rows.push([
-        {text:`${i+1}`,options:{bold:true,color:RANK_C,fill,align:'center',valign:'middle',fontSize:15}},
-        {text:d.name,options:{bold:true,color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:14}},
-        {text:String(dash(d.viol)),options:{bold:!!d.viol,color:d.viol?VIOL_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:15}},
-        {text:`${d.total}`,options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:13}},
-        {text:`${d.rate}%`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:13}}
-      ]);
+    // 브랜드 데이터
+    const brandData = allBrands.filter(b=>b.division_id===dv.id).map(b=>{
+      const items=baseRisks.filter(r=>r.brands?.id===b.id);
+      return {name:b.name, viol:cViol(items), total:items.length};
+    }).sort((a,b)=>a.viol-b.viol || a.total-b.total);
+
+    if(brandData.length===0){
+      s4.addText('(브랜드 없음)',{x,y:startY+0.8,w:colW,h:0.35,fontSize:9,color:RPT.TEXT3,fontFace:RPT.FONT,align:'center',italic:true});
+      return;
+    }
+
+    const brandRows = brandData.map((bd,bi)=>{
+      const fill=bi%2?RPT.BG:RPT.SURF;
+      return [
+        {text:`${bi+1}`,  options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:9}},
+        {text:bd.name,    options:{color:RPT.TEXT, fill,align:'left',valign:'middle',fontSize:9}},
+        {text:`${bd.viol}`, options:{bold:true,color:bd.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:10}}
+      ];
     });
-    if(!data.length) rows.push([{text:'(데이터 없음)',options:{colspan:5,color:RPT.TEXT3,fill:RPT.SURF,align:'center',italic:true,fontSize:11}}]);
-    const rowH=Math.min(0.7,(bottom-top)/rows.length);
-    sl.addTable(rows,{x:1.17,y:top,w:11.0,colW:[1.3,3.3,2.4,2.4,1.6],border:{type:'solid',pt:0.75,color:RPT.BORDER},rowH,fontFace:RPT.FONT,valign:'middle'});
-  }
+    const innerColW=[colW*0.18, colW*0.52, colW*0.30];
+    s4.addTable(brandRows,{x,y:startY+0.8,w:colW,colW:innerColW,rowH:0.34,border:{type:'solid',pt:0.4,color:RPT.BORDER},fontFace:RPT.FONT});
+  });
 
-  divs.forEach(dv=>{
-    if(dv.name==='유통'){
-      // 유통(1): 리테일 매장 순위 — 한 장 (전체 높이 사용)
-      const sl=pptx.addSlide(); head(sl,'유통 — 리테일 매장 순위','위반+완료 건수 많은 순');
-      const distStores=allStores.filter(s=>s.division_id===dv.id);
+  // ── 슬라이드 4-1: 매장별 순위 (유통 · 리테일) ─────────────
+  // 매장(store)은 유통 전용 → 전체/유통 보고서일 때만, 매장 데이터가 있을 때만 추가
+  if(divFilter==='' || divFilter==='유통'){
+    const distDiv=allDiv.find(d=>d.name==='유통');
+    const distStores=distDiv?allStores.filter(s=>s.division_id===distDiv.id):[];
+    if(distStores.length){
       const storeRanks=distStores.map(s=>{
         const items=baseRisks.filter(r=>r.store_id===s.id);
         const viol=cViol(items);
         return {name:s.name, viol, total:items.length, rate:rPct(viol,items.length)};
-      }).sort((a,b)=> b.viol-a.viol || b.total-a.total);
-      if(storeRanks.length){
-        const mTop=1.85, mBottom=7.0;
-        const half=Math.ceil(storeRanks.length/2);
-        const colsData=[storeRanks.slice(0,half), storeRanks.slice(half)];
-        const mRowH=Math.min(0.4,(mBottom-mTop)/(half+1));
-        const mX0=0.4, mGap=0.41, mColW=(13.33-mX0*2-mGap)/2;
-        const mInner=[mColW*0.12, mColW*0.46, mColW*0.16, mColW*0.13, mColW*0.13];
-        const mHdr=()=>['순위','매장','위반건수','전체','위반율'].map((t,i)=>
-          ({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:i===1?'left':'center',valign:'middle',fontSize:10}}));
-        colsData.forEach((data,ci)=>{
-          const rows=[mHdr()];
-          data.forEach((s,i)=>{
-            const rank=ci*half+i+1;
-            const fill=i%2?RPT.BG:RPT.SURF;
-            rows.push([
-              {text:`${rank}`,options:{bold:true,color:RANK_C,fill,align:'center',valign:'middle',fontSize:9}},
-              {text:s.name,options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
-              {text:String(dash(s.viol)),options:{bold:!!s.viol,color:s.viol?VIOL_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:9}},
-              {text:String(s.total),options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
-              {text:`${s.rate}%`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:9}}
-            ]);
-          });
-          const x=mX0+ci*(mColW+mGap);
-          sl.addTable(rows,{x,y:mTop,w:mColW,colW:mInner,rowH:mRowH,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle'});
+      }).sort((a,b)=> b.viol-a.viol || b.total-a.total); // 위반 많은 순
+      const sS=pptx.addSlide(); head(sS,'매장별 순위 (유통 · 리테일)','위반+완료 건수 많은 순');
+      // 전체 매장을 좌우 2열로 분할
+      const half=Math.ceil(storeRanks.length/2);
+      const colsData=[storeRanks.slice(0,half), storeRanks.slice(half)];
+      const mTop=1.85, mBottom=7.0;
+      const mRowH=Math.min(0.34,(mBottom-mTop)/(half+1));
+      const mX0=0.4, mGap=0.41, mColW=(13.33-mX0*2-mGap)/2;
+      const mInner=[mColW*0.12, mColW*0.46, mColW*0.16, mColW*0.13, mColW*0.13];
+      const mHdr=()=>['순위','매장','위반','전체','위반율'].map((t,i)=>
+        ({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:i===1?'left':'center',valign:'middle',fontSize:9}}));
+      colsData.forEach((data,ci)=>{
+        const rows=[mHdr()];
+        data.forEach((s,i)=>{
+          const rank=ci*half+i+1;
+          const fill=i%2?RPT.BG:RPT.SURF;
+          rows.push([
+            {text:`${rank}`,options:{bold:true,color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:8}},
+            {text:s.name,options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:8}},
+            {text:String(dash(s.viol)),options:{bold:!!s.viol,color:s.viol?RPT.RISK_C:RPT.TEXT3,fill,align:'center',valign:'middle',fontSize:8}},
+            {text:String(s.total),options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:8}},
+            {text:`${s.rate}%`,options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:8}}
+          ]);
         });
-      } else {
-        sl.addText('(리테일 매장 데이터 없음)',{x:0.4,y:3.0,w:12.5,h:0.4,fontSize:11,color:RPT.TEXT3,italic:true,align:'center',fontFace:RPT.FONT});
-      }
-      // 유통(2): 글로벌 · 팜앤푸드 · 킴스 · 기타 순위 — 별도 한 장
-      const sl2=pptx.addSlide(); head(sl2,'유통 — 글로벌 · 팜앤푸드 · 킴스 · 기타 순위','위반+완료 건수 많은 순');
-      const four=DIST_MINI.map(nm=>{
-        const b=allBrands.find(x=>x.division_id===dv.id&&x.name===nm);
-        const items=b?baseRisks.filter(r=>r.brands?.id===b.id):[];
-        const viol=cViol(items);
-        return {name:nm, viol, total:items.length, rate:rPct(viol,items.length)};
-      }).sort((a,b)=> b.viol-a.viol || b.total-a.total);
-      rankTable(sl2, four, '브랜드/조직', 1.95, 6.95);
-    } else {
-      const sl=pptx.addSlide(); head(sl,`${dv.name} 브랜드/조직 순위`,'위반+완료 건수 적은 순 → 많은 순');
-      const data=allBrands.filter(b=>b.division_id===dv.id).map(b=>{
-        const items=baseRisks.filter(r=>r.brands?.id===b.id);
-        const viol=cViol(items);
-        return {name:b.name, viol, total:items.length, rate:rPct(viol,items.length)};
-      }).sort((a,b)=>a.viol-b.viol || a.total-b.total);
-      rankTable(sl, data, '브랜드/조직', 1.95, 6.95);
+        const x=mX0+ci*(mColW+mGap);
+        sS.addTable(rows,{x,y:mTop,w:mColW,colW:mInner,rowH:mRowH,border:{type:'solid',pt:0.5,color:RPT.BORDER},fontFace:RPT.FONT,valign:'middle'});
+      });
     }
-  });
+  }
 
   addMatrixSlide('계열사별 현황 (연누적)', baseRisks);
   addMatrixSlide('계열사별 현황 (기준월)',  prevRisks);
