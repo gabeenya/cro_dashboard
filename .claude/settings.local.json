@@ -39,7 +39,8 @@
       "Bash(find /c \"p-status\")",
       "Bash(findstr /C:\"p-status\" _live_app_check.js)",
       "Bash(curl -s -o /dev/null -w \"status=%{http_code} size=%{size_download}\\\\n\" \"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.2/dist/umd/supabase.js\")",
-      "Bash(curl -s \"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.2/dist/umd/supabase.js\")"
+      "Bash(curl -s \"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.2/dist/umd/supabase.js\")",
+      "Bash(curl -s https://gabeenya.github.io/cro_dashboard/login.html?nocache=__TRACKED_VAR__)"
     ]
   }
 }
