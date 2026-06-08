@@ -171,6 +171,7 @@ async function init(){
   document.getElementById('k-month-badge').textContent=`${now.getMonth()+1}월`;
   await loadMaster();
   await loadAll();
+  subscribeRealtime();   // 실시간 자동 갱신 시작
 }
 
 async function loadMaster(){
@@ -218,6 +219,19 @@ async function loadAll(){
   fillMonthFilter();
   buildSnapshot();
   renderDash(getFiltered());
+}
+
+// ── 실시간 자동 갱신 ───────────────────────────
+// risks 테이블이 바뀌면(다른 사이트 연동으로 들어온 것 포함) 화면을 자동으로 다시 그린다.
+// 짧은 시간에 여러 건이 몰려도 0.8초 모아서 한 번만 새로고침한다.
+let realtimeTimer=null;
+function subscribeRealtime(){
+  sb.channel('risks-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'risks'},()=>{
+      clearTimeout(realtimeTimer);
+      realtimeTimer=setTimeout(()=>{ loadAll(); showToast('새 데이터가 반영되었습니다'); },800);
+    })
+    .subscribe();
 }
 
 // ── 월 스냅샷 ───────────────────────────────

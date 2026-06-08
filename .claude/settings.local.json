@@ -19,7 +19,8 @@
       "Bash(node --check sw.js)",
       "Bash(cd \"C:\\\\Users\\\\lee_gabeen\\\\Desktop\\\\클로드\\\\cro_dashboard-1\")",
       "Bash(curl -s \"https://registry.npmjs.org/marked\")",
-      "Bash(openssl dgst *)"
+      "Bash(openssl dgst *)",
+      "Bash(curl -s \"https://ywceavigvleurnzzeqdv.supabase.co/rest/v1/brands?select=id,name,division_id&division_id=eq.3&order=name\" -H \"apikey: sb_publishable_Ny1yoy5La-q9Tw7jT6pstg_SV0_fb1a\")"
     ]
   }
 }
