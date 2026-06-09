@@ -301,7 +301,17 @@
       <div class="card" style="margin-bottom:0">
         <div class="card-hd">
           <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">월별 모니터링 추이</span></div>
-          <span class="card-hint">최근 12개월</span>
+          <span class="card-hint" style="display:inline-flex;align-items:center;gap:3px">
+            직전
+            <select id="trend-before" onchange="renderTrend(getFiltered())" style="font-size:11px;padding:1px 3px">
+              <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option>
+            </select>
+            + 현재 + 이후
+            <select id="trend-after" onchange="renderTrend(getFiltered())" style="font-size:11px;padding:1px 3px">
+              <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8" selected>8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option>
+            </select>
+            개월
+          </span>
         </div>
         <div class="card-bd"><div class="chart-box"><canvas id="trend-chart"></canvas></div></div>
       </div>

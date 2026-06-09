@@ -645,9 +645,11 @@ function setBar(id,pct,cls){
 function renderTrend(risks){
   const now=refNow();
   const months=[];
-  // 기준 월에서 끝나는 최근 12개월
-  for(let i=11;i>=0;i--){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+  // 기간 창: 직전 before개월 + 현재 + 이후 after개월 (기본 3 + 1 + 8 = 12개월). 컨트롤로 조정 가능.
+  const before=parseInt(document.getElementById('trend-before')?.value ?? '3');
+  const after =parseInt(document.getElementById('trend-after')?.value  ?? '8');
+  for(let off=-before; off<=after; off++){
+    const d=new Date(now.getFullYear(),now.getMonth()+off,1);
     months.push({label:`${d.getMonth()+1}월`,y:d.getFullYear(),m:d.getMonth()});
   }
   const cnt=m=>risks.filter(r=>{
@@ -655,8 +657,10 @@ function renderTrend(risks){
     const d=new Date(r.registered_at);
     return d.getFullYear()===m.y&&d.getMonth()===m.m;
   }).length;
+  // '위반' 건수 = item_state가 '위반'(위반 발견) 또는 '완료'(위반 있어 조치됨). '모니터링'은 제외.
   const violCnt=m=>risks.filter(r=>{
-    if(!r.registered_at||r.item_state!=='위반') return false;
+    if(!r.registered_at) return false;
+    if(r.item_state!=='위반'&&r.item_state!=='완료') return false;
     const d=new Date(r.registered_at);
     return d.getFullYear()===m.y&&d.getMonth()===m.m;
   }).length;
