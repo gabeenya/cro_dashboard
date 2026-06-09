@@ -42,7 +42,11 @@
       "Bash(curl -s \"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.2/dist/umd/supabase.js\")",
       "Bash(curl -s https://gabeenya.github.io/cro_dashboard/login.html?nocache=__TRACKED_VAR__)",
       "mcp__ide__getDiagnostics",
-      "Skill(claude-api)"
+      "Skill(claude-api)",
+      "Bash(supabase --version)",
+      "Bash(supabase projects *)",
+      "Bash(grep -nA6 \"function escapeHTML\" app.js)",
+      "Bash(grep -viE \"sessionStorage|localStorage|placeholder|//|comment|autocomplete|type=.password.|new-password|current-password|\\\\.password\\\\b|input\")"
     ]
   }
 }

@@ -4,8 +4,22 @@
 # 비밀키·환경변수
 .env
 .env.*
+*.env
 *.key
 *.pem
+*.p12
+*.pfx
+*.crt
+# 이름에 secret/credential/token 이 들어간 파일 (실수 방지)
+*secret*
+*credential*
+*token*.json
+service_role*
+id_rsa
+id_ed25519
+# Supabase CLI 임시/로컬 자료
+supabase/.temp/
+supabase/.branches/
 
 # 내부 문서/내보낸 데이터
 *.pptx
