@@ -31,6 +31,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   position:fixed;top:0;left:0;bottom:0;width:var(--sw);
   background:var(--navy);
   display:flex;flex-direction:column;z-index:100;
+  overflow-y:auto;
 }
 
 /* 로고 영역 */
@@ -62,7 +63,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .sb-divider{height:1px;background:rgba(255,255,255,0.07);margin:4px 12px 10px}
 
 /* 계열사 목록 */
-.div-section{padding:0 12px;flex:1;overflow-y:auto}
+.div-section{padding:0 12px;flex:1 0 auto}
 .div-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.55);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px;padding-left:4px}
 .div-item{
   display:flex;align-items:center;justify-content:space-between;
