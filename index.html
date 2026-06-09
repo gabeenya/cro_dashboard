@@ -277,11 +277,12 @@
           <div class="alert-val" id="alert-overdue-n">—</div>
           <div class="alert-sub">
             <select id="alert-overdue-days" onchange="renderAlerts(getFiltered())" onclick="event.stopPropagation()">
-              <option value="3" selected>3일</option>
-              <option value="7">7일</option>
-              <option value="14">14일</option>
+              <option value="10" selected>10일</option>
+              <option value="15">15일</option>
               <option value="30">30일</option>
-            </select> 이상 경과 + 미해결
+              <option value="60">60일</option>
+              <option value="90">90일</option>
+            </select> 이상 '위반'
           </div>
         </div>
       </div>

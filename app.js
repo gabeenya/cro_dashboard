@@ -292,17 +292,18 @@ function onMonthFilterChange(){
 }
 
 // ── 등급 자동 산정 ───────────────────────────
-// 규칙:
-//   위험: (a) 등록 후 30일 이상 미완료  또는
+// 규칙: ('미완료' = item_state '위반' 상태. '모니터링'·'완료'는 지연일수 계산에서 제외)
+//   위험: (a) 등록 후 30일 이상 '위반' 상태  또는
 //         (b) 동일 위반(브랜드+영역 대분류+영역 중분류)이 최근 30일 내 10건 이상  또는
 //         (c) 동일 영역 대분류의 이번달 등록 건수가 전월 대비 20% 이상 증가
-//   주의: (a) 등록 후 15일 이상 미완료  또는
+//   주의: (a) 등록 후 15일 이상 '위반' 상태  또는
 //         (b) 동일 위반이 최근 30일 내 5건 이상  또는
 //         (c) 동일 영역 대분류 등록이 전월 대비 10% 이상 증가(20% 미만)
 //   안전: 위 외
 function computeGrade(r,all,now=new Date()){
   const regDate=r.registered_at?new Date(r.registered_at):null;
-  const isOpen=r.item_state!=='완료';
+  // '미완료' = '위반' 상태만 의미. '모니터링'은 문제없는 상태라 지연일수에서 제외(완료할 것이 없음).
+  const isOpen=r.item_state==='위반';
   // (a) 처리 지연 일수
   let delayDays=0;
   if(regDate&&isOpen) delayDays=Math.floor((now-regDate)/86400000);
@@ -450,13 +451,13 @@ function renderDash(risks){
 let _alertOverdueList=[], _alertSurgeList=[], _alertOverdueDays=3;
 
 function renderAlerts(risks){
-  // (1) 장기 미해결: 등록 후 N일 경과 + 위반/모니터링 상태
-  const days=parseInt(document.getElementById('alert-overdue-days')?.value||'3');
+  // (1) 장기 미해결: 등록 후 N일(기준일) 이상 '위반' 상태인 건만. '모니터링'은 제외(완료할 것 없음).
+  const days=parseInt(document.getElementById('alert-overdue-days')?.value||'10');
   _alertOverdueDays=days;
   const cutoff=refNow(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-days);
   const overdue=risks.filter(r=>{
     if(!r.registered_at) return false;
-    if(r.item_state!=='위반'&&r.item_state!=='모니터링') return false;
+    if(r.item_state!=='위반') return false;
     return new Date(r.registered_at) <= cutoff;
   }).sort((a,b)=>(a.registered_at||'').localeCompare(b.registered_at||''));
   _alertOverdueList=overdue;
