@@ -9,6 +9,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // ── 상태 ───────────────────────────────────
 let allDiv=[], allBrands=[], allCats=[], allSubs=[], allStores=[], allRisks=[];
 let activeDiv='', editId=null;
+let currentPage='dashboard'; // 현재 보고 있는 페이지(붉은 글씨 클릭 시 이 페이지를 새로고침)
 let tChart=null, dChart=null;
 // 대시보드 월 스냅샷: null=현재(라이브). {y,m}=그 달 시점으로 화면 재구성.
 let viewMonth=null;
@@ -351,6 +352,7 @@ function updateSidebarBadges(){
 // ── 탭/필터 ────────────────────────────────
 function setDiv(name,el){
   activeDiv=name;
+  currentPage='dashboard';
   // 사이드바 on 상태
   document.querySelectorAll('.mgmt-item,.div-item').forEach(e=>e.classList.remove('on'));
   if(el) el.classList.add('on');
@@ -367,14 +369,21 @@ function setDiv(name,el){
   renderDash(getFiltered());
 }
 
-// 헤더의 빨간 글씨(현재 화면 이름) 클릭 → 그 화면의 메인 페이지로 복귀.
-// 계열사 보기 중이면 해당 계열사 대시보드, 전사 보기면 전사 대시보드로 이동.
+// 헤더의 빨간 글씨(현재 화면 이름) 클릭 → 지금 보고 있는 페이지를 그대로 새로고침.
+// 다른 페이지나 임의의 계열사뷰로 넘어가지 않고, 현재 화면만 다시 그린다.
 function goViewHome(){
-  const el = activeDiv ? document.getElementById('div-'+activeDiv)
-                       : document.getElementById('nav-all');
-  // 상단 필터 다시 표시(데이터 입력/AI 등에서 숨겨졌을 수 있음)
-  const fbar=document.getElementById('main-fbar'); if(fbar) fbar.style.display='';
-  setDiv(activeDiv, el);
+  if(currentPage==='dashboard'){
+    // 대시보드: 현재 보고 있던 계열사(또는 전사) 대시보드를 다시 그림
+    const el = activeDiv ? document.getElementById('div-'+activeDiv)
+                         : document.getElementById('nav-all');
+    const fbar=document.getElementById('main-fbar'); if(fbar) fbar.style.display='';
+    setDiv(activeDiv, el);
+  }else{
+    // 리스트/입력/AI/회원관리 등: 같은 페이지를 다시 렌더링(사이드바 강조 유지)
+    const btn=[...document.querySelectorAll('.mgmt-item')]
+      .find(b=>(b.getAttribute('onclick')||'').includes("showPage('"+currentPage+"'"));
+    showPage(currentPage, btn);
+  }
   window.scrollTo(0,0);
 }
 
@@ -979,6 +988,7 @@ function drillDown(divId,catId){
 
 // ── 페이지 전환 ─────────────────────────────
 function showPage(name,btn){
+  currentPage=name;
   document.querySelectorAll('.mgmt-item').forEach(e=>e.classList.remove('on'));
   document.querySelectorAll('.div-item').forEach(e=>e.classList.remove('on'));
   if(btn) btn.classList.add('on');
