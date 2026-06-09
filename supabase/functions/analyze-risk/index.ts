@@ -1,3 +1,5 @@
+// @ts-nocheck  ← 이 파일은 Supabase(Deno) 서버에서 실행됩니다. VS Code는 Node/웹 기준으로 검사해
+//   Deno 전역(Deno.env)·원격 import를 "오류"로 표시하지만 실제 배포·동작은 정상입니다. 이 줄이 그 오탐을 끕니다.
 // 이랜드그룹 리스크 관리 — AI 분석 프록시 (Claude API)
 // 2026-06-08 업그레이드: ① 스트리밍(SSE) 응답 ② 선택 항목 수에 따른 max_tokens 축소 + 간결 지시
 //   - 권한 검사(JWT + profiles.approved)는 기존과 동일하게 유지
@@ -81,12 +83,14 @@ ${dataSummary}
 - **간결하게**: 항목당 핵심 위주로, 불필요한 서론·반복 없이 작성
 - 마지막에 "## 종합 결론" 섹션으로 전체 요약 (3~5문장)`;
 
-    // 5) Claude API 호출 (스트리밍 + 선택 항목 수에 따른 max_tokens)
+    // 5) Claude API 호출 (스트리밍)
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!anthropicKey) return jsonRes({ error: "ANTHROPIC_API_KEY가 설정되지 않았습니다" }, 500);
 
-    // 1개=1200, 2개=1900, 3개=2600 … 최대 4000으로 제한 → 짧은 요청은 빨리 끝남
-    const maxTokens = Math.min(4000, 500 + analysisItems.length * 700);
+    // max_tokens는 "최대 상한선"일 뿐 — 올려도 실제 생성된 만큼만 과금되므로 비용은 그대로다.
+    // 내용은 프롬프트에서 "간결하게" 지시하므로 필요한 만큼만 쓰고, 상한선만 30000으로 넉넉히 잡아
+    //   혹시라도 긴 분석이 중간에 잘리는 일을 막는다(모델 최대치 64000 이내).
+    const maxTokens = 30000;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
