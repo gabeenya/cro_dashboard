@@ -685,6 +685,11 @@ function renderTrend(risks){
     },
     options:{
       responsive:true,maintainAspectRatio:false,
+      // 새로고침마다 선이 바닥(0)에서 위로 차오르며 그려지는 '업데이트' 효과
+      animation:{duration:1200,easing:'easeOutQuart'},
+      animations:{
+        y:{from:ctx=>ctx.chart.scales.y.getPixelForValue(0)}
+      },
       plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:10,padding:10}}},
       scales:{
         x:{grid:{display:false},ticks:{font:{size:10}}},
@@ -701,8 +706,17 @@ function renderDonut(risks){
   if(dChart) dChart.destroy();
   dChart=new Chart(document.getElementById('donut-chart'),{
     type:'doughnut',
-    data:{labels:allCats.map(c=>c.name),datasets:[{data:vals,backgroundColor:CAT_COLORS,borderWidth:2,borderColor:'#fff'}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'66%',plugins:{legend:{display:false}}}
+    // 처음엔 0(빈 도넛)으로 그린 뒤 실제 값으로 갱신 → 새로고침마다 차오르는 '업데이트' 효과
+    data:{labels:allCats.map(c=>c.name),datasets:[{data:vals.map(()=>0),backgroundColor:CAT_COLORS,borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'66%',
+      animation:{animateRotate:true,animateScale:true,duration:1100,easing:'easeOutQuart'},
+      plugins:{legend:{display:false}}}
+  });
+  // 다음 프레임에 실제 값으로 갱신해 도넛이 채워지는 애니메이션을 보여줌
+  requestAnimationFrame(()=>{
+    if(!dChart) return;
+    dChart.data.datasets[0].data=vals;
+    dChart.update();
   });
   document.getElementById('donut-legend').innerHTML=allCats.map((c,i)=>`
     <div class="lg-item"><div class="lg-dot" style="background:${CAT_COLORS[i]}"></div><span>${c.name}</span><span class="lg-n">${vals[i]}</span></div>
