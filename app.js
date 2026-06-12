@@ -20,6 +20,23 @@ let currentUser=null; // 로그인 사용자 프로필 (인증 게이트 통과 
 const ADMIN_EMAIL='gabeenya@gmail.com';
 const CAT_COLORS=['#7a9bc1','#d99893','#d9b683','#94c4a5','#b3a4cc','#92b8d1','#c997b5','#a8aeba'];
 
+// ── 건수 집계 헬퍼 ──────────────────────────
+// 모든 '건수'는 데이터 입력에서 적은 건수를 기준으로 집계한다(행 1개=1건이 아니라 입력 건수만큼).
+// 저장 방식: 모니터링이면 monitoring_count에, 위반/완료면 violation_count에 입력 건수가 들어감(둘 중 하나만).
+// 과거에 건수를 안 적은 데이터(둘 다 null)는 1건으로 간주.
+function rowCnt(r){
+  const m=r.monitoring_count, v=r.violation_count;
+  if(m==null && v==null) return 1;
+  return (m||0)+(v||0);
+}
+// 위반 건수: 상태가 위반/완료일 때만 그 행의 건수를 반영
+function rowViol(r){
+  if(r.item_state!=='위반' && r.item_state!=='완료') return 0;
+  return r.violation_count==null ? 1 : r.violation_count;
+}
+const sumCnt =arr=>arr.reduce((s,r)=>s+rowCnt(r),0);   // 전체(모니터링) 건수 합
+const sumViol=arr=>arr.reduce((s,r)=>s+rowViol(r),0);  // 위반 건수 합
+
 // ── 인증 게이트 ────────────────────────────
 // 미로그인/미승인 시 login.html로 보냄. 통과 시 currentUser 세팅.
 async function authGate(){
@@ -343,7 +360,7 @@ function computeGrade(r,all,now=new Date()){
 // ── 사이드바 배지 ───────────────────────────
 function updateSidebarBadges(){
   ['패션','유통','외식','파크','건설','소법인'].forEach(name=>{
-    const cnt=allRisks.filter(r=>r.divisions?.name===name).length;
+    const cnt=sumCnt(allRisks.filter(r=>r.divisions?.name===name));
     const el=document.getElementById('db-'+name);
     if(el) el.textContent=cnt;
   });
@@ -595,16 +612,16 @@ if('serviceWorker' in navigator){
 
 // ── KPI ────────────────────────────────────
 function renderKPI(risks){
-  const t=risks.length;
+  const t=sumCnt(risks);
   const now=refNow();
   const thisY=now.getFullYear(), thisM=now.getMonth();
   // 당월 카드 배지 = 기준 월 (스냅샷이면 연.월, 라이브면 이번달 월번호)
   const mb=document.getElementById('k-month-badge');
   if(mb) mb.textContent = viewMonth ? `${thisY}.${String(thisM+1).padStart(2,'0')}월` : `${thisM+1}월`;
 
-  // 누적: 위반(위반+완료) / 모니터링(전체)
-  const accViol=risks.filter(r=>r.item_state==='위반'||r.item_state==='완료').length;
-  const accMon=risks.length;
+  // 누적: 위반(위반+완료) / 모니터링(전체) — 입력 건수 합계 기준
+  const accViol=sumViol(risks);
+  const accMon=sumCnt(risks);
   const accRate=accMon>0?Math.round(accViol/accMon*100):0;
 
   // 당월
@@ -613,20 +630,20 @@ function renderKPI(risks){
     const d=new Date(r.registered_at);
     return d.getFullYear()===thisY&&d.getMonth()===thisM;
   });
-  const monViol=thisMonth.filter(r=>r.item_state==='위반'||r.item_state==='완료').length;
-  const monMon=thisMonth.length;
+  const monViol=sumViol(thisMonth);
+  const monMon=sumCnt(thisMonth);
   const monRate=monMon>0?Math.round(monViol/monMon*100):0;
 
   // 현재: 조치중(=위반 건수) + 처리완료율(=완료/(위반+완료))
-  const curAct=risks.filter(r=>r.item_state==='위반').length;
-  const curDone=risks.filter(r=>r.item_state==='완료').length;
+  const curAct=sumViol(risks.filter(r=>r.item_state==='위반'));
+  const curDone=sumViol(risks.filter(r=>r.item_state==='완료'));
   const curTotal=curAct+curDone;
   const curRate=curTotal>0?Math.round(curDone/curTotal*100):0;
 
-  // 등급
-  const 위험=risks.filter(r=>r.grade==='위험').length;
-  const 주의=risks.filter(r=>r.grade==='주의').length;
-  const 안전=risks.filter(r=>r.grade==='안전').length;
+  // 등급 (입력 건수 합계 기준)
+  const 위험=sumCnt(risks.filter(r=>r.grade==='위험'));
+  const 주의=sumCnt(risks.filter(r=>r.grade==='주의'));
+  const 안전=sumCnt(risks.filter(r=>r.grade==='안전'));
   const pct=v=>t>0?Math.round(v/t*100):0;
 
   // 누적
@@ -661,18 +678,17 @@ function renderTrend(risks){
     const d=new Date(now.getFullYear(),now.getMonth()+off,1);
     months.push({label:`${d.getMonth()+1}월`,y:d.getFullYear(),m:d.getMonth()});
   }
-  const cnt=m=>risks.filter(r=>{
+  const cnt=m=>sumCnt(risks.filter(r=>{
     if(!r.registered_at) return false;
     const d=new Date(r.registered_at);
     return d.getFullYear()===m.y&&d.getMonth()===m.m;
-  }).length;
-  // '위반' 건수 = item_state가 '위반'(위반 발견) 또는 '완료'(위반 있어 조치됨). '모니터링'은 제외.
-  const violCnt=m=>risks.filter(r=>{
+  }));
+  // '위반' 건수 = item_state가 '위반'/'완료' 행의 입력 건수 합. '모니터링'은 제외(sumViol이 처리).
+  const violCnt=m=>sumViol(risks.filter(r=>{
     if(!r.registered_at) return false;
-    if(r.item_state!=='위반'&&r.item_state!=='완료') return false;
     const d=new Date(r.registered_at);
     return d.getFullYear()===m.y&&d.getMonth()===m.m;
-  }).length;
+  }));
   if(tChart) tChart.destroy();
   tChart=new Chart(document.getElementById('trend-chart'),{
     type:'line',
@@ -701,8 +717,8 @@ function renderTrend(risks){
 
 // ── 도넛 ───────────────────────────────────
 function renderDonut(risks){
-  const vals=allCats.map(c=>risks.filter(r=>r.risk_categories?.id===c.id).length);
-  document.getElementById('donut-n').textContent=risks.length;
+  const vals=allCats.map(c=>sumCnt(risks.filter(r=>r.risk_categories?.id===c.id)));
+  document.getElementById('donut-n').textContent=sumCnt(risks);
   if(dChart) dChart.destroy();
   dChart=new Chart(document.getElementById('donut-chart'),{
     type:'doughnut',
@@ -732,9 +748,9 @@ function renderMatrix(risks){
     const cells=allCats.map(cat=>{
       const items=risks.filter(r=>r.divisions?.id==div.id&&r.risk_categories?.id==cat.id);
       if(!items.length) return `<td><span class="cp-none">—</span></td>`;
-      const h=items.filter(r=>r.grade==='위험').length;
-      const m=items.filter(r=>r.grade==='주의').length;
-      const l=items.filter(r=>r.grade==='안전').length;
+      const h=sumCnt(items.filter(r=>r.grade==='위험'));
+      const m=sumCnt(items.filter(r=>r.grade==='주의'));
+      const l=sumCnt(items.filter(r=>r.grade==='안전'));
       let cls='cp-안전',lbl=`안전 ${l}`;
       if(h){cls='cp-위험';lbl=`위험 ${h}`;}
       else if(m){cls='cp-주의';lbl=`주의 ${m}`;}
@@ -821,12 +837,12 @@ function renderDivisionCards(risks){
   const cards=allDiv.map(div=>{
     const items=risks.filter(r=>r.divisions?.id===div.id);
     if(!items.length) return '';
-    const 위험=items.filter(r=>r.grade==='위험').length;
-    const 주의=items.filter(r=>r.grade==='주의').length;
-    const 안전=items.filter(r=>r.grade==='안전').length;
-    const t=items.length;
-    const viol=items.reduce((s,r)=>s+(r.violation_count||0),0);
-    const mon=items.reduce((s,r)=>s+(r.monitoring_count||0),0);
+    const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
+    const 주의=sumCnt(items.filter(r=>r.grade==='주의'));
+    const 안전=sumCnt(items.filter(r=>r.grade==='안전'));
+    const t=sumCnt(items);
+    const viol=sumViol(items);
+    const mon=sumCnt(items);
     const rate=mon>0?Math.round(viol/mon*100):0;
     return `
       <div class="bc" onclick="setDiv('${div.name}',document.getElementById('div-${div.name}'))" style="cursor:pointer">
@@ -860,12 +876,12 @@ function renderBrandGrid(risks){
     cards=allDiv.map(div=>{
       const items=risks.filter(r=>r.divisions?.id===div.id);
       if(!items.length) return '';
-      const 위험=items.filter(r=>r.grade==='위험').length;
-      const 주의=items.filter(r=>r.grade==='주의').length;
-      const 안전=items.filter(r=>r.grade==='안전').length;
-      const t=items.length;
-      const viol=items.reduce((s,r)=>s+(r.violation_count||0),0);
-      const mon=items.reduce((s,r)=>s+(r.monitoring_count||0),0);
+      const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
+      const 주의=sumCnt(items.filter(r=>r.grade==='주의'));
+      const 안전=sumCnt(items.filter(r=>r.grade==='안전'));
+      const t=sumCnt(items);
+      const viol=sumViol(items);
+      const mon=sumCnt(items);
       const rate=mon>0?Math.round(viol/mon*100):0;
       return `
         <div class="bc" onclick="setDiv('${div.name}',document.getElementById('div-${div.name}'))" style="cursor:pointer">
@@ -888,12 +904,12 @@ function renderBrandGrid(risks){
     cards=brands.map(b=>{
       const items=risks.filter(r=>r.brands?.id===b.id);
       if(!items.length) return '';
-      const 위험=items.filter(r=>r.grade==='위험').length;
-      const 주의=items.filter(r=>r.grade==='주의').length;
-      const 안전=items.filter(r=>r.grade==='안전').length;
-      const t=items.length;
-      const viol=items.reduce((s,r)=>s+(r.violation_count||0),0);
-      const mon=items.reduce((s,r)=>s+(r.monitoring_count||0),0);
+      const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
+      const 주의=sumCnt(items.filter(r=>r.grade==='주의'));
+      const 안전=sumCnt(items.filter(r=>r.grade==='안전'));
+      const t=sumCnt(items);
+      const viol=sumViol(items);
+      const mon=sumCnt(items);
       const rate=mon>0?Math.round(viol/mon*100):0;
       return `
         <div class="bc">
@@ -945,10 +961,6 @@ function renderList(){
   document.getElementById('list-label').textContent=`모니터링 리스트 (${total}건)`;
   const b=document.getElementById('list-body');
   b.innerHTML=slice.length?slice.map(r=>{
-    const viol=r.violation_count??'-';
-    const mon=r.monitoring_count??'-';
-    const rate=(r.monitoring_count&&r.violation_count!=null)
-      ?Math.round(r.violation_count/r.monitoring_count*100)+'%':'-';
     return `<tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
@@ -956,14 +968,12 @@ function renderList(){
       <td>${escapeHTML(r.title||'-')}</td>
       <td>${gradeBadge(r.grade)}</td>
       <td>${stateBadge(r.item_state)}</td>
-      <td style="text-align:center">${viol}</td>
-      <td style="text-align:center">${mon}</td>
-      <td style="text-align:center;font-weight:700;color:var(--위험-c)">${rate}</td>
+      <td style="text-align:center;font-weight:600">${rowCnt(r)}</td>
       <td class="td-clip">${escapeHTML(r.status||'-')}</td>
       <td class="td-clip">${escapeHTML(r.note||'-')}</td>
       <td><button class="btn btn-sm" onclick="event.stopPropagation();openEdit('${r.id}')">수정</button></td>
     </tr>`;
-  }).join(''):'<tr><td colspan="14" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">조건에 맞는 데이터 없음</td></tr>';
+  }).join(''):'<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">조건에 맞는 데이터 없음</td></tr>';
   document.getElementById('pgn').innerHTML=buildPagination(lPage,tp);
 }
 
@@ -1116,10 +1126,10 @@ function buildDataSummary(divFilter){
     return d.getFullYear()===prevY && d.getMonth()===prevM;
   });
   const isV = r=>r.item_state==='위반'||r.item_state==='완료';
-  const accV = base.filter(isV).length;
-  const monV = prevMonth.filter(isV).length;
-  const done = base.filter(r=>r.item_state==='완료').length;
-  const open = base.filter(r=>r.item_state==='위반').length;
+  const accV = sumViol(base);
+  const monV = sumViol(prevMonth);
+  const done = sumViol(base.filter(r=>r.item_state==='완료'));
+  const open = sumViol(base.filter(r=>r.item_state==='위반'));
   const doneRate = (done+open)>0 ? Math.round(done/(done+open)*100) : 0;
   const pct = (n,d)=>d>0?Math.round(n/d*100):0;
 
@@ -1128,8 +1138,8 @@ function buildDataSummary(divFilter){
   L.push(`[분석 대상] ${divFilter||'그룹 전체'}`);
   L.push('');
   L.push('[전체 KPI]');
-  L.push(`- 누적 모니터링: ${base.length}건 (위반 ${accV}건, ${pct(accV,base.length)}%)`);
-  L.push(`- 전월(${prevY}-${String(prevM+1).padStart(2,'0')}) 모니터링: ${prevMonth.length}건 (위반 ${monV}건, ${pct(monV,prevMonth.length)}%)`);
+  L.push(`- 누적 모니터링: ${sumCnt(base)}건 (위반 ${accV}건, ${pct(accV,sumCnt(base))}%)`);
+  L.push(`- 전월(${prevY}-${String(prevM+1).padStart(2,'0')}) 모니터링: ${sumCnt(prevMonth)}건 (위반 ${monV}건, ${pct(monV,sumCnt(prevMonth))}%)`);
   L.push(`- 처리 완료율: ${doneRate}% (완료 ${done} / 위반 처리중 ${open})`);
   L.push(`- 조치중(위반 진행): ${open}건`);
   L.push('');
@@ -1140,8 +1150,8 @@ function buildDataSummary(divFilter){
     allDiv.forEach(d=>{
       const it = base.filter(r=>r.divisions?.id===d.id);
       if(!it.length) return;
-      const v = it.filter(isV).length;
-      L.push(`- ${d.name}: ${it.length}/${v}`);
+      const v = sumViol(it);
+      L.push(`- ${d.name}: ${sumCnt(it)}/${v}`);
     });
     L.push('');
   }
@@ -1150,8 +1160,8 @@ function buildDataSummary(divFilter){
   L.push('[8대 리스크 카테고리별 (연누적) — 전체/위반]');
   allCats.forEach(c=>{
     const it = base.filter(r=>r.risk_categories?.id===c.id);
-    const v = it.filter(isV).length;
-    L.push(`- ${c.name}: ${it.length}/${v}`);
+    const v = sumViol(it);
+    L.push(`- ${c.name}: ${sumCnt(it)}/${v}`);
   });
   L.push('');
 
@@ -1164,7 +1174,7 @@ function buildDataSummary(divFilter){
       const row=[c.name];
       allDiv.forEach(d=>{
         const cell=prevMonth.filter(r=>r.risk_categories?.id===c.id && r.divisions?.id===d.id);
-        row.push(String(cell.filter(isV).length));
+        row.push(String(sumViol(cell)));
       });
       L.push(row.join(' | '));
     });
@@ -1172,9 +1182,9 @@ function buildDataSummary(divFilter){
   }
 
   // 등급 분포
-  const 위험=base.filter(r=>r.grade==='위험').length;
-  const 주의=base.filter(r=>r.grade==='주의').length;
-  const 안전=base.filter(r=>r.grade==='안전').length;
+  const 위험=sumCnt(base.filter(r=>r.grade==='위험'));
+  const 주의=sumCnt(base.filter(r=>r.grade==='주의'));
+  const 안전=sumCnt(base.filter(r=>r.grade==='안전'));
   L.push('[현재 등급 분포]');
   L.push(`- 위험: ${위험}건 / 주의: ${주의}건 / 안전: ${안전}건`);
   L.push('');
@@ -1189,8 +1199,8 @@ function buildDataSummary(divFilter){
       const rd = new Date(r.registered_at);
       return rd.getFullYear()===y && rd.getMonth()===m;
     });
-    const v = mn.filter(isV).length;
-    L.push(`- ${y}-${String(m+1).padStart(2,'0')}: ${mn.length}(${v})`);
+    const v = sumViol(mn);
+    L.push(`- ${y}-${String(m+1).padStart(2,'0')}: ${sumCnt(mn)}(${v})`);
   }
   L.push('');
 
@@ -1796,24 +1806,18 @@ function renderRecentBody(){
   const filtered=allRisks.filter(r=>r.divisions?.id===divIdNum).slice(0,10);
   const b=document.getElementById('recent-body');
   if(!filtered.length){
-    b.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+    b.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
     return;
   }
   let html='';
   filtered.forEach(r=>{
-    const viol=r.violation_count??'-';
-    const mon=r.monitoring_count??'-';
-    const rate=(r.monitoring_count&&r.violation_count!=null)
-      ?Math.round(r.violation_count/r.monitoring_count*100)+'%':'-';
     const isEd=inlineEditId===r.id;
     html+=`<tr class="${isEd?'ier-active':''}" onclick="startInlineEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
       <td>${escapeHTML(r.title||'')}</td>
       <td>${stateBadge(r.item_state)}</td>
-      <td style="text-align:center">${viol}</td>
-      <td style="text-align:center">${mon}</td>
-      <td style="text-align:center;font-weight:700;color:var(--위험-c)">${rate}</td>
+      <td style="text-align:center;font-weight:600">${rowCnt(r)}</td>
       <td>${gradeBadge(r.grade)}</td>
       <td><button class="btn btn-sm" onclick="event.stopPropagation();startInlineEdit('${r.id}')">${isEd?'닫기':'수정'}</button></td>
     </tr>`;
@@ -1832,7 +1836,7 @@ function buildInlineEditRow(r){
   const curStoreId=r.store_id||'';
   const act=parseActionStatus(r.status); // 조치사항 미리 채우기
   const actOpts=['징계','징계 외'];
-  return `<tr class="ier-row"><td colspan="10">
+  return `<tr class="ier-row"><td colspan="8">
     <div class="ier-form">
       <div class="fg">
         <label class="flb">계열사 *</label>
@@ -2117,9 +2121,11 @@ const RPT={
 };
 // '위반' = item_state ∈ {위반, 완료}
 const isViol=r=>r.item_state==='위반'||r.item_state==='완료';
-const cViol=arr=>arr.filter(isViol).length;
-const cDone=arr=>arr.filter(r=>r.item_state==='완료').length;
-const cOpen=arr=>arr.filter(r=>r.item_state==='위반').length;
+// 건수 합계 기준 (행 개수가 아니라 입력 건수). cAll=전체, cViol=위반, cDone=완료, cOpen=위반(처리중)
+const cAll =arr=>sumCnt(arr);
+const cViol=arr=>sumViol(arr);
+const cDone=arr=>sumViol(arr.filter(r=>r.item_state==='완료'));
+const cOpen=arr=>sumViol(arr.filter(r=>r.item_state==='위반'));
 const rPct =(n,d)=>d>0?Math.round(n/d*100):0;
 function rptMonthFilter(arr,y,m){
   return arr.filter(r=>{
@@ -2183,9 +2189,9 @@ async function downloadPPT(){
   // ── 슬라이드 2: 그룹 전체 KPI ─────────────────
   const s2=pptx.addSlide(); head(s2,`${divFilter||'그룹'} 전체 리스크 현황`,prevLabel);
   // 누적
-  const accAll=baseRisks.length, accV=cViol(baseRisks), accRate=rPct(accV,accAll);
+  const accAll=cAll(baseRisks), accV=cViol(baseRisks), accRate=rPct(accV,accAll);
   // 전월
-  const monAll=prevRisks.length, monV=cViol(prevRisks), monRate=rPct(monV,monAll);
+  const monAll=cAll(prevRisks), monV=cViol(prevRisks), monRate=rPct(monV,monAll);
   // 처리 완료율 / 조치중 (누적 기준)
   const done=cDone(baseRisks), open=cOpen(baseRisks);
   const doneTotal=done+open;
@@ -2233,7 +2239,7 @@ async function downloadPPT(){
       let sumA=0, sumV=0;
       allCats.forEach(c=>{
         const cell=items.filter(x=>x.risk_categories?.id===c.id);
-        const a=cell.length, v=cViol(cell);
+        const a=cAll(cell), v=cViol(cell);
         sumA+=a; sumV+=v;
         r.push({text:String(dash(a)),options:{color:RPT.TEXT,fill:di%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
         r.push({text:String(dash(v)),options:{color:v?RPT.RISK_C:RPT.TEXT3,bold:!!v,fill:di%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
@@ -2243,11 +2249,11 @@ async function downloadPPT(){
       rows.push(r);
     });
     // 합계 행
-    const totA=srcRisks.length, totV=cViol(srcRisks);
+    const totA=cAll(srcRisks), totV=cViol(srcRisks);
     const totRow=[{text:'합계',options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:9}}];
     allCats.forEach(c=>{
       const cell=srcRisks.filter(x=>x.risk_categories?.id===c.id);
-      const a=cell.length, v=cViol(cell);
+      const a=cAll(cell), v=cViol(cell);
       totRow.push({text:String(dash(a)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
       totRow.push({text:String(dash(v)),options:{bold:true,color:v?'FFE4E8':'D9DBE5',fill:RPT.NAVY,align:'center',fontSize:8}});
     });
@@ -2282,8 +2288,8 @@ async function downloadPPT(){
   const surgeList=[];
   divs.forEach(dv=>{
     allCats.forEach(cat=>{
-      const rec=prevRisks.filter(r=>r.divisions?.id===dv.id&&r.risk_categories?.id===cat.id&&isViol(r)).length;
-      const base=prevPrevRisks.filter(r=>r.divisions?.id===dv.id&&r.risk_categories?.id===cat.id&&isViol(r)).length;
+      const rec=sumViol(prevRisks.filter(r=>r.divisions?.id===dv.id&&r.risk_categories?.id===cat.id));
+      const base=sumViol(prevPrevRisks.filter(r=>r.divisions?.id===dv.id&&r.risk_categories?.id===cat.id));
       if(rec>=3 && rec/Math.max(base,1)>=1.2){
         surgeList.push({div:dv.name,cat:cat.name,recent:rec,baseline:base,pct:Math.round((rec/Math.max(base,1)-1)*100)});
       }
@@ -2339,7 +2345,7 @@ async function downloadPPT(){
   // 위반(=위반+완료) 건수 적은 순(위) → 많은 순(아래)
   const divRanks = divs.map(dv=>{
     const items=baseRisks.filter(r=>r.divisions?.id===dv.id);
-    const total=items.length, viol=cViol(items);
+    const total=cAll(items), viol=cViol(items);
     return {name:dv.name, total, viol, rate:rPct(viol,total)};
   }).sort((a,b)=>a.viol-b.viol || a.total-b.total);
 
@@ -2403,7 +2409,8 @@ async function downloadPPT(){
       const storeRanks=distStores.map(s=>{
         const items=baseRisks.filter(r=>r.store_id===s.id);
         const viol=cViol(items);
-        return {name:s.name, viol, total:items.length, rate:rPct(viol,items.length)};
+        const total=cAll(items);
+        return {name:s.name, viol, total, rate:rPct(viol,total)};
       }).sort((a,b)=> b.viol-a.viol || b.total-a.total);
       if(storeRanks.length){
         // 표를 위로 올리고(mTop↓), 행 수가 많으면 글자를 줄여 슬라이드를 벗어나지 않게 함
@@ -2441,7 +2448,8 @@ async function downloadPPT(){
         const b=allBrands.find(x=>x.division_id===dv.id&&x.name===nm);
         const items=b?baseRisks.filter(r=>r.brands?.id===b.id):[];
         const viol=cViol(items);
-        return {name:nm, viol, total:items.length, rate:rPct(viol,items.length)};
+        const total=cAll(items);
+        return {name:nm, viol, total, rate:rPct(viol,total)};
       }).sort((a,b)=> b.viol-a.viol || b.total-a.total);
       rankTable(sl2, four, '브랜드/조직', 1.95, 6.95);
     } else {
@@ -2449,7 +2457,8 @@ async function downloadPPT(){
       const data=allBrands.filter(b=>b.division_id===dv.id).map(b=>{
         const items=baseRisks.filter(r=>r.brands?.id===b.id);
         const viol=cViol(items);
-        return {name:b.name, viol, total:items.length, rate:rPct(viol,items.length)};
+        const total=cAll(items);
+        return {name:b.name, viol, total, rate:rPct(viol,total)};
       }).sort((a,b)=>a.viol-b.viol || a.total-b.total);
       rankTable(sl, data, '브랜드/조직', 1.95, 6.95);
     }
@@ -2490,7 +2499,7 @@ async function downloadPPT(){
         let sa=0,sv=0;
         colDivs.forEach(dv=>{
           const cell=items.filter(x=>x.divisions?.id===dv.id && (sb.id?x.risk_subcategories?.id===sb.id:!x.risk_subcategories?.id));
-          const a=cell.length, v=cViol(cell);
+          const a=cAll(cell), v=cViol(cell);
           sa+=a; sv+=v;
           r.push({text:String(dash(a)),options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
           r.push({text:String(dash(v)),options:{color:v?RPT.RISK_C:RPT.TEXT3,bold:!!v,fill:ri%2?RPT.BG:RPT.SURF,align:'center',fontSize:8}});
@@ -2504,7 +2513,7 @@ async function downloadPPT(){
       let ta=0, tv=0;
       colDivs.forEach(dv=>{
         const cell=items.filter(x=>x.divisions?.id===dv.id);
-        const a=cell.length, v=cViol(cell);
+        const a=cAll(cell), v=cViol(cell);
         ta+=a; tv+=v;
         tRow.push({text:String(dash(a)),options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:'center',fontSize:8}});
         tRow.push({text:String(dash(v)),options:{bold:true,color:v?'FFE4E8':'D9DBE5',fill:RPT.NAVY,align:'center',fontSize:8}});
@@ -2534,7 +2543,7 @@ async function downloadPPT(){
     const r=Math.floor(idx/4), c=idx%4;
     const x=sumX0+c*(sumW+sumGapX), y=sumY0+r*(sumH+sumGapY);
     const items=prevRisks.filter(x=>x.risk_categories?.id===cat.id);
-    const a=items.length, v=cViol(items);
+    const a=cAll(items), v=cViol(items);
     const d=cDone(items), o=cOpen(items);
     const dr=rPct(d,d+o);
     const noData=v===0;
@@ -2562,7 +2571,7 @@ async function downloadPPT(){
   divs.forEach(dv=>{
     const sl=pptx.addSlide(); head(sl, `${dv.name} 영역별 모니터링 현황`, `${prevLabel} (기준월)`);
     const items=prevRisks.filter(r=>r.divisions?.id===dv.id);
-    const a=items.length, v=cViol(items);
+    const a=cAll(items), v=cViol(items);
     const d=cDone(items), o=cOpen(items);
     const dr=rPct(d,d+o);
 
@@ -2592,7 +2601,7 @@ async function downloadPPT(){
     let sa=0, sv=0;
     allCats.forEach((c,ri)=>{
       const cell=items.filter(x=>x.risk_categories?.id===c.id);
-      const ca=cell.length, cv=cViol(cell);
+      const ca=cAll(cell), cv=cViol(cell);
       sa+=ca; sv+=cv;
       rows.push([
         {text:c.name,options:{color:RPT.TEXT,fill:ri%2?RPT.BG:RPT.SURF,align:'left',fontSize:10}},

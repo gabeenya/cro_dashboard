@@ -46,7 +46,8 @@
       "Bash(supabase --version)",
       "Bash(supabase projects *)",
       "Bash(grep -nA6 \"function escapeHTML\" app.js)",
-      "Bash(grep -viE \"sessionStorage|localStorage|placeholder|//|comment|autocomplete|type=.password.|new-password|current-password|\\\\.password\\\\b|input\")"
+      "Bash(grep -viE \"sessionStorage|localStorage|placeholder|//|comment|autocomplete|type=.password.|new-password|current-password|\\\\.password\\\\b|input\")",
+      "Bash(node -e ' *)"
     ]
   }
 }
