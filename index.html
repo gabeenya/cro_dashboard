@@ -467,7 +467,7 @@
       <div class="card-bd">
         <div class="fgrid">
           <div class="fg"><label class="flb">계열사 *</label><select class="fc" id="p-div" onchange="onPDiv()"><option value="">선택</option></select></div>
-          <div class="fg"><label class="flb">브랜드/조직 *</label><select class="fc" id="p-brand" onchange="onPBrand()"><option value="">계열사 먼저 선택</option></select></div>
+          <div class="fg"><label class="flb">브랜드/조직</label><select class="fc" id="p-brand" onchange="onPBrand()"><option value="">선택 안 함</option></select></div>
           <div class="fg hidden-fg" id="p-store-wrap"><label class="flb">매장 (유통 전용)</label><select class="fc" id="p-store"><option value="">선택 (선택사항)</option></select></div>
           <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="p-date"></div>
           <div class="fg"><label class="flb">영역 대분류 *</label><select class="fc" id="p-cat" onchange="onPCat()"><option value="">선택</option></select></div>
@@ -645,7 +645,7 @@
     <div class="mo-bd">
       <div class="fgrid">
         <div class="fg"><label class="flb">계열사 *</label><select class="fc" id="m-div" onchange="onMDiv()"><option value="">선택</option></select></div>
-        <div class="fg"><label class="flb">브랜드/조직 *</label><select class="fc" id="m-brand" onchange="onMBrand()"><option value="">계열사 먼저 선택</option></select></div>
+        <div class="fg"><label class="flb">브랜드/조직</label><select class="fc" id="m-brand" onchange="onMBrand()"><option value="">계열사 먼저 선택</option></select></div>
         <div class="fg"><label class="flb">영역 대분류 *</label><select class="fc" id="m-cat" onchange="onMCat()"><option value="">선택</option></select></div>
         <div class="fg"><label class="flb">영역 중분류</label><select class="fc" id="m-sub"><option value="">없음</option></select></div>
         <div class="fg hidden-fg" id="m-store-wrap"><label class="flb">매장 (유통 전용)</label><select class="fc" id="m-store"><option value="">선택 (선택사항)</option></select></div>
@@ -659,8 +659,7 @@
           </div>
           <input type="hidden" id="m-state" value="">
         </div>
-        <div class="fg"><label class="flb">위반건수</label><input type="number" class="fc" id="m-viol" placeholder="0" min="0"></div>
-        <div class="fg"><label class="flb">모니터링건수</label><input type="number" class="fc" id="m-mon" placeholder="0" min="0"></div>
+        <div class="fg"><label class="flb">건수 *</label><input type="number" class="fc" id="m-cnt" placeholder="0" min="0"></div>
         <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="m-title" placeholder="리스크 제목"></div>
         <div class="fg full"><label class="flb">조치사항</label>
           <select class="fc" id="m-action" onchange="onAction('m')">

@@ -1323,7 +1323,7 @@ async function onPDiv(){
   const divId=document.getElementById('p-div').value;
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('p-brand');
-  el.innerHTML='<option value="">선택</option>';
+  el.innerHTML='<option value="">선택 안 함</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
   // 브랜드가 초기화되므로 매장 드롭다운도 초기화
   onPBrand();
@@ -1452,13 +1452,13 @@ async function saveInput(){
     document.getElementById('p-action-penalty').value.trim(),
     document.getElementById('p-action-other').value.trim()
   );
-  if(!divId||!brandId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
+  if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('p-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
   // grade는 자동 산정값으로 덮어씀. 저장 시 임시 '안전'으로 넣고 loadAll에서 재계산.
   const {error}=await sb.from('risks').insert({
-    division_id:parseInt(divId),brand_id:parseInt(brandId),category_id:parseInt(catId),
+    division_id:parseInt(divId),brand_id:brandId?parseInt(brandId):null,category_id:parseInt(catId),
     subcategory_id:subId?parseInt(subId):null,
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
@@ -1686,8 +1686,8 @@ async function handleBulkUpload(ev){
       else if(!divObj) errs.push(`계열사 '${divName}' 없음`);
 
       let brandObj=null;
-      if(!brandName) errs.push('브랜드 누락');
-      else if(divObj){
+      // 브랜드는 선택사항 — 비어 있으면 통과, 값이 있으면 계열사에 속하는지만 검증
+      if(brandName && divObj){
         brandObj=allBrands.find(b=>b.division_id===divObj.id&&b.name===brandName);
         if(!brandObj) errs.push(`브랜드 '${brandName}'는 '${divName}'에 속하지 않음`);
       }
@@ -1718,7 +1718,7 @@ async function handleBulkUpload(ev){
         errors.push({row:r, msgs:errs});
       } else {
         rows.push({
-          division_id:divObj.id, brand_id:brandObj.id, category_id:catObj.id,
+          division_id:divObj.id, brand_id:brandObj?brandObj.id:null, category_id:catObj.id,
           subcategory_id:subObj?subObj.id:null,
           grade:'안전', item_state:state, registered_at:dateStr, title,
           status:buildActionStatus(actType,actName,actPen,actOther), note:null,
@@ -1845,9 +1845,9 @@ function buildInlineEditRow(r){
         </select>
       </div>
       <div class="fg">
-        <label class="flb">브랜드/조직 *</label>
+        <label class="flb">브랜드/조직</label>
         <select class="fc" id="ie-brand" onchange="onIEBrand()">
-          <option value="">선택</option>
+          <option value="">선택 안 함</option>
           ${brands.map(b=>`<option value="${b.id}" ${b.id===r.brands?.id?'selected':''}>${b.name}</option>`).join('')}
         </select>
       </div>
@@ -1883,8 +1883,7 @@ function buildInlineEditRow(r){
         </div>
         <input type="hidden" id="ie-state" value="${curState}">
       </div>
-      <div class="fg"><label class="flb">위반건수</label><input type="number" class="fc" id="ie-viol" value="${r.violation_count??''}" min="0"></div>
-      <div class="fg"><label class="flb">모니터링건수</label><input type="number" class="fc" id="ie-mon" value="${r.monitoring_count??''}" min="0"></div>
+      <div class="fg"><label class="flb">건수 *</label><input type="number" class="fc" id="ie-cnt" value="${r.monitoring_count??r.violation_count??''}" min="0"></div>
       <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="ie-title" value="${escapeHTML(r.title||'')}"></div>
       <div class="fg full"><label class="flb">조치사항</label>
         <select class="fc" id="ie-action" onchange="onAction('ie')">
@@ -1917,7 +1916,7 @@ function onIEDiv(){
   const divId=document.getElementById('ie-div').value;
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('ie-brand');
-  el.innerHTML='<option value="">선택</option>'+brands.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  el.innerHTML='<option value="">선택 안 함</option>'+brands.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
   toggleIEStore();
 }
 function onIEBrand(){ toggleIEStore(); }
@@ -1963,19 +1962,19 @@ async function saveInline(id){
   const title=document.getElementById('ie-title').value.trim();
   const status=buildActionFromForm('ie');
   const note=document.getElementById('ie-note').value.trim();
-  const viol=document.getElementById('ie-viol').value;
-  const mon=document.getElementById('ie-mon').value;
-  if(!divId||!brandId||!catId||!state||!date||!title){showToast('필수 항목(*)을 입력해주세요');return;}
+  const cnt=document.getElementById('ie-cnt').value;
+  if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
+  const cntVal=parseInt(cnt);
   const btn=document.getElementById('ie-save-btn');
   if(btn){btn.textContent='저장 중...'; btn.disabled=true;}
   const {error}=await sb.from('risks').update({
-    division_id:parseInt(divId),brand_id:parseInt(brandId),category_id:parseInt(catId),
+    division_id:parseInt(divId),brand_id:brandId?parseInt(brandId):null,category_id:parseInt(catId),
     subcategory_id:subId?parseInt(subId):null,
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
     status:status||null,note:note||null,
-    violation_count:viol?parseInt(viol):null,
-    monitoring_count:mon?parseInt(mon):null
+    violation_count:state==='모니터링'?null:cntVal,
+    monitoring_count:state==='모니터링'?cntVal:null
   }).eq('id',id);
   if(error){
     if(btn){btn.textContent='저장'; btn.disabled=false;}
@@ -2014,8 +2013,8 @@ function openEdit(id){
   document.getElementById('m-title').value=r.title||'';
   fillActionFields('m', r.status);
   document.getElementById('m-note').value=r.note||'';
-  document.getElementById('m-viol').value=r.violation_count??'';
-  document.getElementById('m-mon').value=r.monitoring_count??'';
+  // 건수는 한 칸으로 통합 — 상태와 무관하게 그 행의 입력 건수를 표시
+  document.getElementById('m-cnt').value=(r.monitoring_count??r.violation_count??'');
   // 상태 복원
   if(r.item_state) selectState('m',r.item_state);
   else { document.getElementById('m-state').value=''; ['모니터링','위반','완료'].forEach(s=>{const el=document.getElementById('ms-'+s);if(el)el.className='state-opt';}); }
@@ -2027,7 +2026,7 @@ async function onMDiv(){
   const divId=document.getElementById('m-div').value;
   const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
   const el=document.getElementById('m-brand');
-  el.innerHTML='<option value="">선택</option>';
+  el.innerHTML='<option value="">선택 안 함</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
   onMBrand();
 }
@@ -2056,20 +2055,20 @@ async function saveModal(){
   const title=document.getElementById('m-title').value.trim();
   const status=buildActionFromForm('m');
   const note=document.getElementById('m-note').value.trim();
-  const viol=document.getElementById('m-viol').value;
-  const mon=document.getElementById('m-mon').value;
-  if(!divId||!brandId||!catId||!state||!date||!title){showToast('필수 항목(*)을 입력해주세요');return;}
+  const cnt=document.getElementById('m-cnt').value;
+  if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
+  const cntVal=parseInt(cnt);
   const btn=document.getElementById('save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
   // grade는 자동 산정. DB에는 임시 '안전' 저장 후 loadAll에서 재계산
   const {error}=await sb.from('risks').update({
-    division_id:parseInt(divId),brand_id:parseInt(brandId),category_id:parseInt(catId),
+    division_id:parseInt(divId),brand_id:brandId?parseInt(brandId):null,category_id:parseInt(catId),
     subcategory_id:subId?parseInt(subId):null,
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
     status:status||null,note:note||null,
-    violation_count:viol?parseInt(viol):null,
-    monitoring_count:mon?parseInt(mon):null
+    violation_count:state==='모니터링'?null:cntVal,
+    monitoring_count:state==='모니터링'?cntVal:null
   }).eq('id',editId);
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
