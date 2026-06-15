@@ -236,7 +236,16 @@ async function loadAll(){
   updateSidebarBadges();
   fillMonthFilter();
   buildSnapshot();
-  renderDash(getFiltered());
+  renderCurrentPage();
+}
+
+// 새로고침(loadAll) 후 "지금 보고 있는 페이지"를 다시 그린다.
+// 예전엔 항상 대시보드만 그려서, 리스트/입력 화면에선 새로고침해도 수정이 즉시 안 보였음.
+function renderCurrentPage(){
+  if(currentPage==='list') renderList();
+  else if(currentPage==='input') renderRecentBody();
+  else if(currentPage==='admin') renderAdmin();
+  else renderDash(getFiltered()); // dashboard 및 기타
 }
 
 // ── 실시간 자동 갱신 ───────────────────────────
