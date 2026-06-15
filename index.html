@@ -136,7 +136,8 @@
     <select id="f-div" onchange="applyFilter()"><option value="">전체 계열사</option></select>
     <select id="f-brand" onchange="applyFilter()"><option value="">전체 브랜드/조직</option></select>
     <select id="f-store" onchange="applyFilter()" style="display:none"><option value="">전체 매장</option></select>
-    <select id="f-cat" onchange="applyFilter()"><option value="">전체 영역 대분류</option></select>
+    <select id="f-cat" onchange="onFCatChange()"><option value="">전체 영역 대분류</option></select>
+    <select id="f-sub" onchange="applyFilter()"><option value="">전체 영역 중분류</option></select>
     <select id="f-grade" onchange="applyFilter()">
       <option value="">전체 등급</option>
       <option value="위험">위험</option>
@@ -404,7 +405,8 @@
       <span class="fbar-label">필터</span>
       <select id="lf-div" onchange="onLfDivChange()"><option value="">전체 계열사</option></select>
       <select id="lf-brand" onchange="renderList()"><option value="">전체 브랜드/조직</option></select>
-      <select id="lf-cat" onchange="renderList()"><option value="">전체 영역 대분류</option></select>
+      <select id="lf-cat" onchange="onLfCatChange()"><option value="">전체 영역 대분류</option></select>
+      <select id="lf-sub" onchange="renderList()"><option value="">전체 영역 중분류</option></select>
       <select id="lf-grade" onchange="renderList()">
         <option value="">전체 등급</option>
         <option value="위험">위험</option><option value="주의">주의</option><option value="안전">안전</option>

@@ -417,6 +417,7 @@ function getFiltered(){
   const div=document.getElementById('f-div')?.value;
   const brand=document.getElementById('f-brand').value;
   const cat=document.getElementById('f-cat').value;
+  const sub=document.getElementById('f-sub')?.value;
   const grade=document.getElementById('f-grade').value;
   // 매장 필터: 유통 + 리테일일 때만 적용
   const brandObj=allBrands.find(b=>b.id==brand);
@@ -428,9 +429,16 @@ function getFiltered(){
     if(brand && r.brands?.id!=brand) return false;
     if(store && r.store_id!=store) return false;
     if(cat   && r.risk_categories?.id!=cat) return false;
+    if(sub   && r.risk_subcategories?.id!=sub) return false;
     if(grade && r.grade!==grade) return false;
     return true;
   });
+}
+// 영역 대분류 선택 시 해당 중분류만 채우기 (대시보드 필터)
+function onFCatChange(){
+  const catId=document.getElementById('f-cat').value;
+  fillSel('f-sub', catId?allSubs.filter(s=>s.category_id==catId):[], '전체 영역 중분류');
+  applyFilter();
 }
 // 뷰별 필터 select 표시 토글
 function updateFbarSelects(){
@@ -946,16 +954,24 @@ function onLfDivChange(){
   fillSel('lf-brand',divId?allBrands.filter(b=>b.division_id==divId):allBrands,'전체 브랜드/조직');
   lPage=1; renderList();
 }
+// 영역 대분류 선택 시 해당 중분류만 채우기 (모니터링 리스트 필터)
+function onLfCatChange(){
+  const catId=document.getElementById('lf-cat').value;
+  fillSel('lf-sub', catId?allSubs.filter(s=>s.category_id==catId):[], '전체 영역 중분류');
+  lPage=1; renderList();
+}
 function getListRisks(){
   const div=document.getElementById('lf-div').value;
   const brand=document.getElementById('lf-brand').value;
   const cat=document.getElementById('lf-cat').value;
+  const sub=document.getElementById('lf-sub').value;
   const grade=document.getElementById('lf-grade').value;
   const state=document.getElementById('lf-state').value;
   return allRisks.filter(r=>{
     if(div && r.divisions?.id!=div) return false;
     if(brand && r.brands?.id!=brand) return false;
     if(cat   && r.risk_categories?.id!=cat) return false;
+    if(sub   && r.risk_subcategories?.id!=sub) return false;
     if(grade && r.grade!==grade) return false;
     if(state && r.item_state!==state) return false;
     return true;
@@ -1016,6 +1032,7 @@ function drillDown(divId,catId){
   showPage('list',null);
   document.getElementById('lf-div').value=divId;
   document.getElementById('lf-cat').value=catId;
+  fillSel('lf-sub', catId?allSubs.filter(s=>s.category_id==catId):[], '전체 영역 중분류');
   onLfDivChange();
 }
 
