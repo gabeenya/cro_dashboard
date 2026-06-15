@@ -1363,20 +1363,69 @@ function onPCat(){
 // 조치사항 구분 선택 시 추가 입력란 표시/숨김 (prefix: p / m / ie)
 function onAction(prefix){
   const t=document.getElementById(prefix+'-action').value;
-  document.getElementById(prefix+'-action-name-wrap').classList.toggle('hidden-fg', t!=='징계');
-  document.getElementById(prefix+'-action-penalty-wrap').classList.toggle('hidden-fg', t!=='징계');
+  const dw=document.getElementById(prefix+'-disc-wrap');
+  if(dw){
+    dw.classList.toggle('hidden-fg', t!=='징계');
+    // 징계로 바꿨는데 행이 하나도 없으면 빈 행 하나 생성
+    if(t==='징계' && !dw.querySelector('.disc-row')) addDiscRow(prefix);
+  }
   document.getElementById(prefix+'-action-other-wrap').classList.toggle('hidden-fg', t!=='징계 외');
 }
 function onPAction(){ onAction('p'); }
+// ── 징계 대상자 행(이름·양형) 동적 관리 ──────────────
+// 대상자 행 하나의 HTML
+function discRowHTML(name='',penalty=''){
+  return `<div class="disc-row" style="display:flex;gap:8px;margin-bottom:6px">`+
+    `<input type="text" class="fc disc-name" style="flex:1;min-width:0" placeholder="대상자 이름" value="${escapeHTML(name)}">`+
+    `<input type="text" class="fc disc-pen" style="flex:1;min-width:0" placeholder="예: 정직 3개월" value="${escapeHTML(penalty)}">`+
+    `<button type="button" class="btn btn-sm" onclick="removeDiscRow(this)" title="이 대상자 삭제">✕</button>`+
+    `</div>`;
+}
+// 징계 영역 전체(행들 + 추가 버튼) HTML — 인라인 수정처럼 동적으로 그릴 때 사용
+function discWrapHTML(prefix,people,hidden){
+  const list=(people&&people.length)?people:[{name:'',penalty:''}];
+  return `<div class="fg full ${hidden?'hidden-fg':''}" id="${prefix}-disc-wrap"><label class="flb">징계 대상자 (이름 · 양형)</label>`+
+    `<div id="${prefix}-disc-rows">${list.map(p=>discRowHTML(p.name,p.penalty)).join('')}</div>`+
+    `<button type="button" class="btn btn-sm" onclick="addDiscRow('${prefix}')" style="align-self:flex-start;margin-top:4px">+ 대상자 추가</button></div>`;
+}
+// 대상자 행 추가
+function addDiscRow(prefix,name='',penalty=''){
+  const box=document.getElementById(prefix+'-disc-rows');
+  if(box) box.insertAdjacentHTML('beforeend',discRowHTML(name,penalty));
+}
+// 대상자 행 삭제 (최소 1행은 유지)
+function removeDiscRow(btn){
+  const row=btn.closest('.disc-row'); if(!row) return;
+  const box=row.parentElement;
+  row.remove();
+  if(box && !box.querySelector('.disc-row')) box.insertAdjacentHTML('beforeend',discRowHTML());
+}
+// 정적 폼(p/m)의 징계 행들을 people 배열로 다시 그린다
+function renderDiscRows(prefix,people){
+  const box=document.getElementById(prefix+'-disc-rows'); if(!box) return;
+  const list=(people&&people.length)?people:[{name:'',penalty:''}];
+  box.innerHTML=list.map(p=>discRowHTML(p.name,p.penalty)).join('');
+}
+// 폼에서 징계 대상자들을 읽어 [{name,penalty}] 배열로 (둘 다 빈 행은 제외)
+function collectDiscPeople(prefix){
+  const box=document.getElementById(prefix+'-disc-rows'); if(!box) return [];
+  return [...box.querySelectorAll('.disc-row')].map(r=>({
+    name:r.querySelector('.disc-name').value.trim(),
+    penalty:r.querySelector('.disc-pen').value.trim()
+  })).filter(p=>p.name||p.penalty);
+}
 // 조치사항 입력값들을 status 컬럼에 저장할 하나의 텍스트로 합친다.
-//   징계   → "[징계] 이름: ○○○ / 양형: ○○○"
+//   징계   → "[징계] 이름: A / 양형: X; 이름: B / 양형: Y"  (대상자는 ';'로 구분)
 //   징계 외 → "[징계 외] ○○○"
-function buildActionStatus(type,name,penalty,other){
+function buildActionStatus(type,people,other){
   if(type==='징계'){
-    const parts=[];
-    if(name) parts.push('이름: '+name);
-    if(penalty) parts.push('양형: '+penalty);
-    return '[징계]'+(parts.length?' '+parts.join(' / '):'');
+    const chunks=(people||[]).filter(p=>p.name||p.penalty).map(p=>{
+      const parts=[];
+      if(p.name) parts.push('이름: '+p.name);
+      if(p.penalty) parts.push('양형: '+p.penalty);
+      return parts.join(' / ');
+    }).filter(Boolean);
+    return '[징계]'+(chunks.length?' '+chunks.join('; '):'');
   }
   if(type==='징계 외'){
     return '[징계 외]'+(other?' '+other:'');
@@ -1384,27 +1433,34 @@ function buildActionStatus(type,name,penalty,other){
   return null;
 }
 // status 합성 텍스트를 조치사항 입력값으로 되돌린다 (수정 화면 채우기용).
+// people: [{name,penalty}] 배열. name/penalty는 PPT 등 단일 표시용 편의값(줄바꿈으로 합침).
 // 옛 자유텍스트(접두사 없음)는 내용 보존을 위해 '징계 외'의 조치내용으로 흡수한다.
 function parseActionStatus(status){
   const s=String(status||'').trim();
-  if(s.startsWith('[징계 외]')) return {type:'징계 외',name:'',penalty:'',other:s.slice('[징계 외]'.length).trim()};
+  if(s.startsWith('[징계 외]')) return {type:'징계 외',people:[],name:'',penalty:'',other:s.slice('[징계 외]'.length).trim()};
   if(s.startsWith('[징계]')){
-    let name='',penalty='';
-    s.slice('[징계]'.length).trim().split('/').forEach(part=>{
-      const p=part.trim();
-      if(p.startsWith('이름:')) name=p.slice('이름:'.length).trim();
-      else if(p.startsWith('양형:')) penalty=p.slice('양형:'.length).trim();
-    });
-    return {type:'징계',name,penalty,other:''};
+    const body=s.slice('[징계]'.length).trim();
+    const people=body?body.split(';').map(chunk=>{
+      let name='',penalty='';
+      chunk.split('/').forEach(part=>{
+        const p=part.trim();
+        if(p.startsWith('이름:')) name=p.slice('이름:'.length).trim();
+        else if(p.startsWith('양형:')) penalty=p.slice('양형:'.length).trim();
+      });
+      return {name,penalty};
+    }).filter(p=>p.name||p.penalty):[];
+    return {type:'징계',people,
+      name:people.map(p=>p.name||'-').join('\n'),
+      penalty:people.map(p=>p.penalty||'-').join('\n'),
+      other:''};
   }
-  return s ? {type:'징계 외',name:'',penalty:'',other:s} : {type:'',name:'',penalty:'',other:''};
+  return s ? {type:'징계 외',people:[],name:'',penalty:'',other:s} : {type:'',people:[],name:'',penalty:'',other:''};
 }
 // 수정 화면(prefix)에서 조치사항 입력란을 status 값으로 채운다.
 function fillActionFields(prefix,status){
   const a=parseActionStatus(status);
   document.getElementById(prefix+'-action').value=a.type;
-  document.getElementById(prefix+'-action-name').value=a.name;
-  document.getElementById(prefix+'-action-penalty').value=a.penalty;
+  renderDiscRows(prefix,a.people);
   document.getElementById(prefix+'-action-other').value=a.other;
   onAction(prefix);
 }
@@ -1412,14 +1468,13 @@ function fillActionFields(prefix,status){
 function buildActionFromForm(prefix){
   return buildActionStatus(
     document.getElementById(prefix+'-action').value,
-    document.getElementById(prefix+'-action-name').value.trim(),
-    document.getElementById(prefix+'-action-penalty').value.trim(),
+    collectDiscPeople(prefix),
     document.getElementById(prefix+'-action-other').value.trim()
   );
 }
 function resetInput(){
   ['p-div','p-brand','p-cat','p-sub','p-store'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
-  ['p-title','p-note','p-action-name','p-action-penalty','p-action-other'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  ['p-title','p-note','p-action-other'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   document.getElementById('p-cnt').value='';
   document.getElementById('p-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('p-brand').innerHTML='<option value="">계열사 먼저 선택</option>';
@@ -1427,7 +1482,8 @@ function resetInput(){
   const psw=document.getElementById('p-store-wrap'); if(psw) psw.classList.add('hidden-fg');
   // 조치사항 초기화
   const pa=document.getElementById('p-action'); if(pa) pa.value='';
-  ['p-action-name-wrap','p-action-penalty-wrap','p-action-other-wrap'].forEach(i=>{const el=document.getElementById(i);if(el)el.classList.add('hidden-fg');});
+  renderDiscRows('p',[]);
+  ['p-disc-wrap','p-action-other-wrap'].forEach(i=>{const el=document.getElementById(i);if(el)el.classList.add('hidden-fg');});
   document.getElementById('p-state').value='';
   ['모니터링','위반','완료'].forEach(s=>{
     const el=document.getElementById('ps-'+s); if(el) el.className='state-opt';
@@ -1446,12 +1502,7 @@ async function saveInput(){
   const note=document.getElementById('p-note').value.trim();
   const cnt=document.getElementById('p-cnt').value;
   // 조치사항 합성 (status 컬럼에 저장)
-  const status=buildActionStatus(
-    document.getElementById('p-action').value,
-    document.getElementById('p-action-name').value.trim(),
-    document.getElementById('p-action-penalty').value.trim(),
-    document.getElementById('p-action-other').value.trim()
-  );
+  const status=buildActionFromForm('p');
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('p-save-btn');
@@ -1721,7 +1772,7 @@ async function handleBulkUpload(ev){
           division_id:divObj.id, brand_id:brandObj?brandObj.id:null, category_id:catObj.id,
           subcategory_id:subObj?subObj.id:null,
           grade:'안전', item_state:state, registered_at:dateStr, title,
-          status:buildActionStatus(actType,actName,actPen,actOther), note:null,
+          status:buildActionStatus(actType,[{name:actName,penalty:actPen}],actOther), note:null,
           violation_count:state==='모니터링'?null:cntVal,
           monitoring_count:state==='모니터링'?cntVal:null
         });
@@ -1891,8 +1942,7 @@ function buildInlineEditRow(r){
           ${actOpts.map(o=>`<option value="${o}" ${o===act.type?'selected':''}>${o}</option>`).join('')}
         </select>
       </div>
-      <div class="fg ${act.type==='징계'?'':'hidden-fg'}" id="ie-action-name-wrap"><label class="flb">이름</label><input type="text" class="fc" id="ie-action-name" value="${escapeHTML(act.name)}" placeholder="대상자 이름"></div>
-      <div class="fg ${act.type==='징계'?'':'hidden-fg'}" id="ie-action-penalty-wrap"><label class="flb">양형</label><input type="text" class="fc" id="ie-action-penalty" value="${escapeHTML(act.penalty)}" placeholder="예: 정직 3개월"></div>
+      ${discWrapHTML('ie',act.people,act.type!=='징계')}
       <div class="fg full ${act.type==='징계 외'?'':'hidden-fg'}" id="ie-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="ie-action-other" placeholder="조치 내용을 입력하세요">${escapeHTML(act.other)}</textarea></div>
       <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="ie-note">${escapeHTML(r.note||'')}</textarea></div>
       <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">

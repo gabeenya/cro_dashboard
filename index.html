@@ -493,8 +493,10 @@
               <option value="징계 외">징계 외</option>
             </select>
           </div>
-          <div class="fg hidden-fg" id="p-action-name-wrap"><label class="flb">이름</label><input type="text" class="fc" id="p-action-name" placeholder="대상자 이름"></div>
-          <div class="fg hidden-fg" id="p-action-penalty-wrap"><label class="flb">양형</label><input type="text" class="fc" id="p-action-penalty" placeholder="예: 정직 3개월"></div>
+          <div class="fg full hidden-fg" id="p-disc-wrap"><label class="flb">징계 대상자 (이름 · 양형)</label>
+            <div id="p-disc-rows"></div>
+            <button type="button" class="btn btn-sm" onclick="addDiscRow('p')" style="align-self:flex-start;margin-top:4px">+ 대상자 추가</button>
+          </div>
           <div class="fg full hidden-fg" id="p-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="p-action-other" placeholder="조치 내용을 입력하세요"></textarea></div>
           <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="p-note" placeholder="추가 메모"></textarea></div>
           <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end;margin-top:4px">
@@ -668,8 +670,10 @@
             <option value="징계 외">징계 외</option>
           </select>
         </div>
-        <div class="fg hidden-fg" id="m-action-name-wrap"><label class="flb">이름</label><input type="text" class="fc" id="m-action-name" placeholder="대상자 이름"></div>
-        <div class="fg hidden-fg" id="m-action-penalty-wrap"><label class="flb">양형</label><input type="text" class="fc" id="m-action-penalty" placeholder="예: 정직 3개월"></div>
+        <div class="fg full hidden-fg" id="m-disc-wrap"><label class="flb">징계 대상자 (이름 · 양형)</label>
+          <div id="m-disc-rows"></div>
+          <button type="button" class="btn btn-sm" onclick="addDiscRow('m')" style="align-self:flex-start;margin-top:4px">+ 대상자 추가</button>
+        </div>
         <div class="fg full hidden-fg" id="m-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="m-action-other" placeholder="조치 내용을 입력하세요"></textarea></div>
         <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="m-note" placeholder="추가 메모"></textarea></div>
       </div>
