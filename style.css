@@ -39,7 +39,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   padding:16px 16px 10px;
   border-bottom:1px solid rgba(255,255,255,0.08);
 }
-.eland-ci{display:flex;align-items:center;justify-content:center;width:244px;max-width:100%;margin:0 auto}
+.eland-ci{display:flex;align-items:center;justify-content:center;width:244px;max-width:100%;margin:0 auto;position:relative;left:-8px}
 .eland-ci img{width:100%;height:auto;mix-blend-mode:screen;filter:brightness(1.05)}
 .sb-logo-sub{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:0.8px;margin-top:7px;text-align:center}
 
