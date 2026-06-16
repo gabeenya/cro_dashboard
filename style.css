@@ -16,7 +16,7 @@
   --font:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;
   --r:6px;
   --r-lg:10px;
-  --sw:247px;
+  --sw:280px;
   /* 상태 컬러 */
   --위험-c:#c8102e;--위험-bg:#fef2f2;--위험-bd:#fecaca;
   --주의-c:#d97706;--주의-bg:#fff7ed;--주의-bd:#fed7aa;
@@ -36,15 +36,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* 로고 영역 */
 .sb-logo{
-  padding:16px 16px 14px;
+  padding:16px 16px 10px;
   border-bottom:1px solid rgba(255,255,255,0.08);
 }
-.eland-ci{display:flex;align-items:center;width:210px;margin-left:-6px}
+.eland-ci{display:flex;align-items:center;justify-content:center;width:244px;max-width:100%;margin:0 auto}
 .eland-ci img{width:100%;height:auto;mix-blend-mode:screen;filter:brightness(1.05)}
-.sb-logo-sub{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:0.8px;margin-top:7px;padding-left:1px}
+.sb-logo-sub{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:0.8px;margin-top:7px;text-align:center}
 
 /* 관리센터 */
-.mgmt-section{padding:14px 12px 10px}
+.mgmt-section{padding:6px 12px 10px}
 .mgmt-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.55);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px;padding-left:4px}
 .mgmt-item{
   display:flex;align-items:center;gap:8px;
