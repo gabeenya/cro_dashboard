@@ -47,7 +47,14 @@
       "Bash(supabase projects *)",
       "Bash(grep -nA6 \"function escapeHTML\" app.js)",
       "Bash(grep -viE \"sessionStorage|localStorage|placeholder|//|comment|autocomplete|type=.password.|new-password|current-password|\\\\.password\\\\b|input\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "PowerShell(npm *)",
+      "PowerShell(gh repo view gabeenya/cro_dashboard --json visibility,isPrivate,homepageUrl,defaultBranchRef 2>$null; if \\(-not $?\\) { \"gh CLI 없음 또는 미인증\" })",
+      "PowerShell(try { $r = Invoke-RestMethod -Uri \"https://api.github.com/repos/gabeenya/cro_dashboard\" -Headers @{ \"User-Agent\"=\"claude\" } -ErrorAction Stop; \"visibility: $\\($r.visibility\\)\"; \"private: $\\($r.private\\)\"; \"homepage: $\\($r.homepage\\)\" } catch { \"API 응답: $\\($_.Exception.Response.StatusCode.value__\\) — 404면 비공개\\(private\\) 저장소일 가능성 높음\" })",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:5000/)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:5000/)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://[::1]:5000/\")"
     ]
   }
 }

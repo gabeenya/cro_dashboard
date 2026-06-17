@@ -1,0 +1,15 @@
+{
+  "name": "cro-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "이랜드그룹 리스크 관리 시스템 — 빌드(압축/난독화) 설정",
+  "scripts": {
+    "build": "node build.mjs",
+    "preview": "node build.mjs && npx --yes http-server dist -p 5000 -c-1 --silent"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "html-minifier-terser": "^7.2.0"
+  }
+}

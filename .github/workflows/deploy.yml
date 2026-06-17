@@ -1,0 +1,50 @@
+# main 브랜치에 푸시하면 자동으로 압축 빌드 후 GitHub Pages에 배포합니다.
+name: Build and Deploy to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # GitHub 사이트에서 수동 실행도 가능
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시에 여러 배포가 겹치지 않도록 함
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: 소스 내려받기
+        uses: actions/checkout@v4
+
+      - name: Node.js 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 빌드 도구 설치
+        run: npm ci
+
+      - name: 압축 빌드 (dist/ 생성)
+        run: npm run build
+
+      - name: Pages 설정
+        uses: actions/configure-pages@v5
+
+      - name: 빌드 결과 업로드
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: 배포
+        id: deploy
+        uses: actions/deploy-pages@v4
