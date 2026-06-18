@@ -474,6 +474,7 @@ function renderDash(risks){
   const fbar=document.getElementById('main-fbar');
   if(fbar) fbar.style.display='';
   updateFbarSelects();
+  playDashAnims(); // KPI·알림 카드 진입 애니메이션 재생(차트 재생 시점과 동기화)
   renderAlerts(risks); renderKPI(risks); renderTrend(risks); renderDonut(risks);
   if(!activeDiv){
     // 메인뷰
@@ -664,18 +665,42 @@ function renderKPI(risks){
   const pct=v=>t>0?Math.round(v/t*100):0;
 
   // 누적
-  set('k-acc-viol',accViol); set('k-acc-mon',accMon);
+  animCount('k-acc-viol',accViol); animCount('k-acc-mon',accMon);
   setBar('k-acc-bar',accRate); setText('k-acc-rate',accRate+'%');
   // 당월
-  set('k-mon-viol',monViol); set('k-mon-mon',monMon);
+  animCount('k-mon-viol',monViol); animCount('k-mon-mon',monMon);
   setBar('k-mon-bar',monRate); setText('k-mon-rate',monRate+'%');
   // 현재
-  set('k-cur-act',curAct);
+  animCount('k-cur-act',curAct);
   setBar('k-cur-bar',curRate); setText('k-cur-rate',curRate+'%');
   // 등급
-  set('k-위험-n',위험); setBar('k-위험-bar',pct(위험),'fill-위험'); setText('k-위험-pct',pct(위험)+'%');
-  set('k-주의-n',주의); setBar('k-주의-bar',pct(주의),'fill-주의'); setText('k-주의-pct',pct(주의)+'%');
-  set('k-안전-n',안전); setBar('k-안전-bar',pct(안전),'fill-안전'); setText('k-안전-pct',pct(안전)+'%');
+  animCount('k-위험-n',위험); setBar('k-위험-bar',pct(위험),'fill-위험'); setText('k-위험-pct',pct(위험)+'%');
+  animCount('k-주의-n',주의); setBar('k-주의-bar',pct(주의),'fill-주의'); setText('k-주의-pct',pct(주의)+'%');
+  animCount('k-안전-n',안전); setBar('k-안전-bar',pct(안전),'fill-안전'); setText('k-안전-pct',pct(안전)+'%');
+  if(t>0) _kpiAnimated=true; // 데이터가 한번 표시되면 이후엔 즉시 반영
+}
+// KPI 큰 숫자: 첫 데이터 표시 때 0→목표로 카운트업(이후 필터 변경은 즉시 반영해 차분하게)
+let _kpiAnimated=false;
+function animCount(id,target){
+  const el=document.getElementById(id); if(!el) return;
+  target=Math.round(target||0);
+  const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(reduce||_kpiAnimated||target<=0){ el.textContent=target; return; }
+  const dur=750, start=performance.now();
+  (function tick(now){
+    const p=Math.min((now-start)/dur,1);
+    el.textContent=Math.round(target*(1-Math.pow(1-p,3))); // easeOutCubic
+    if(p<1) requestAnimationFrame(tick); else el.textContent=target;
+  })(performance.now());
+}
+// 대시보드 KPI·알림 카드 진입 애니메이션을 다시 재생(추이·도넛 차트가 다시 그려지는 시점과 맞춤)
+function playDashAnims(){
+  const p=document.getElementById('page-dashboard');
+  if(!p) return;
+  _kpiAnimated=false;          // 숫자 카운트업 다시 켜기
+  p.classList.remove('anim-in');
+  void p.offsetWidth;          // 리플로우 강제 → CSS 애니메이션 재시작
+  p.classList.add('anim-in');
 }
 function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
 function setText(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
@@ -851,7 +876,7 @@ function startHighRotate(wrapId){
 function renderDivisionCards(risks){
   const g=document.getElementById('div-card-grid');
   if(!g) return;
-  const cards=allDiv.map(div=>{
+  const cards=allDiv.map((div,i)=>{
     const items=risks.filter(r=>r.divisions?.id===div.id);
     if(!items.length) return '';
     const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
@@ -862,7 +887,7 @@ function renderDivisionCards(risks){
     const mon=sumCnt(items);
     const rate=mon>0?Math.round(viol/mon*100):0;
     return `
-      <div class="bc" onclick="setDiv('${div.name}',document.getElementById('div-${div.name}'))" style="cursor:pointer">
+      <div class="bc" onclick="setDiv('${div.name}',document.getElementById('div-${div.name}'))" style="cursor:pointer;animation-delay:${i*0.05}s">
         <div class="bc-hd"><span class="bc-name">${div.name}</span><span class="bc-total-badge">${t}건</span></div>
         <div class="bc-stats">
           <div class="bc-stat s-위험"><span class="bc-stat-lbl">위험</span>${위험}</div>
@@ -918,7 +943,7 @@ function renderBrandGrid(risks){
     }).filter(Boolean).join('');
   } else {
     // 계열사뷰: 브랜드별 카드
-    cards=brands.map(b=>{
+    cards=brands.map((b,i)=>{
       const items=risks.filter(r=>r.brands?.id===b.id);
       if(!items.length) return '';
       const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
@@ -929,7 +954,7 @@ function renderBrandGrid(risks){
       const mon=sumCnt(items);
       const rate=mon>0?Math.round(viol/mon*100):0;
       return `
-        <div class="bc">
+        <div class="bc" style="animation-delay:${i*0.05}s">
           <div class="bc-hd"><span class="bc-name">${b.name}</span><span class="bc-total-badge">${t}건</span></div>
           <div class="bc-stats">
             <div class="bc-stat s-위험"><span class="bc-stat-lbl">위험</span>${위험}</div>

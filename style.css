@@ -205,7 +205,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kpi-bottom-label{font-size:12px;color:var(--text2);font-weight:600}
 .kpi-rate-val{font-size:14px;font-weight:700}
 .kpi-rate-bar{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
-.kpi-rate-fill{height:100%;border-radius:2px;transition:width 0.5s}
+.kpi-rate-fill{height:100%;border-radius:2px;transition:width 0.9s cubic-bezier(.22,.61,.36,1)}
 .fill-위험{background:var(--위험-c)}
 .fill-주의{background:var(--주의-c)}
 .fill-안전{background:var(--안전-c)}
@@ -226,6 +226,28 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .card-ttl-bar{width:3px;height:14px;background:var(--red);border-radius:2px}
 .card-hint{font-size:10px;color:var(--text3)}
 .card-bd{padding:14px 16px}
+
+/* ════ 대시보드 카드 진입 애니메이션 (아래에서 떠오르며 순차 등장) ════ */
+@keyframes cardRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* KPI·알림 카드: 렌더(첫 로드+새로고침)마다 재생 — JS가 #page-dashboard에 .anim-in 토글 */
+#page-dashboard.anim-in .kpi,
+#page-dashboard.anim-in .alert-card{animation:cardRise .5s ease both}
+#page-dashboard.anim-in .kpi-row-1 .kpi:nth-child(2){animation-delay:.07s}
+#page-dashboard.anim-in .kpi-row-1 .kpi:nth-child(3){animation-delay:.14s}
+#page-dashboard.anim-in .kpi-row-2 .kpi:nth-child(1){animation-delay:.20s}
+#page-dashboard.anim-in .kpi-row-2 .kpi:nth-child(2){animation-delay:.27s}
+#page-dashboard.anim-in .kpi-row-2 .kpi:nth-child(3){animation-delay:.34s}
+#page-dashboard.anim-in .alert-row .alert-card:nth-child(2){animation-delay:.10s}
+/* 차트 카드(내부 차트는 매 렌더 자체 애니메이션) + 계열사/브랜드 타일(매 렌더 새로 생성)은 생성 시 자동 재생 */
+#page-dashboard .chart-row>.card,
+#page-dashboard .two-col>.card,
+#page-dashboard .bc{animation:cardRise .5s ease both}
+#page-dashboard .chart-row>.card:nth-child(2),
+#page-dashboard .two-col>.card:nth-child(2){animation-delay:.12s}
+@media(prefers-reduced-motion:reduce){
+  #page-dashboard.anim-in .kpi,#page-dashboard.anim-in .alert-card,
+  #page-dashboard .chart-row>.card,#page-dashboard .two-col>.card,#page-dashboard .bc{animation:none}
+}
 
 /* ════ 알림 카드 (솔리드 컬러 + 다크 텍스트로 가시성 확보) ════ */
 .alert-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}

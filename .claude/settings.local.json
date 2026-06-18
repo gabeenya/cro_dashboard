@@ -54,7 +54,8 @@
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:5000/)",
       "PowerShell(Get-NetTCPConnection *)",
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:5000/)",
-      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://[::1]:5000/\")"
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://[::1]:5000/\")",
+      "Bash(curl -s -o /dev/null -w \"8080=%{http_code}\\\\n\" http://127.0.0.1:8080/index.html)"
     ]
   }
 }
