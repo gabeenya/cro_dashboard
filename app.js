@@ -319,50 +319,29 @@ function onMonthFilterChange(){
 }
 
 // ── 등급 자동 산정 ───────────────────────────
-// 규칙: ('미완료' = item_state '위반' 상태. '모니터링'·'완료'는 지연일수 계산에서 제외)
-//   위험: (a) 등록 후 30일 이상 '위반' 상태  또는
-//         (b) 동일 위반(브랜드+영역 대분류+영역 중분류)이 최근 30일 내 10건 이상  또는
-//         (c) 동일 영역 대분류의 이번달 등록 건수가 전월 대비 20% 이상 증가
-//   주의: (a) 등록 후 15일 이상 '위반' 상태  또는
-//         (b) 동일 위반이 최근 30일 내 5건 이상  또는
-//         (c) 동일 영역 대분류 등록이 전월 대비 10% 이상 증가(20% 미만)
-//   안전: 위 외
+// 등급은 '등록 건별'로 자동 계산된다(별도 수동 지정 칸 없음).
+// 기준:
+//   위험: 처리 상태가 '위반'(미해결)        또는  같은 '영역 대분류'의 최근 30일 위반/완료가 GRADE_SR_HI건 이상
+//   주의: 처리 상태가 '모니터링'(주시중)     또는  같은 '영역 대분류'의 최근 30일 위반/완료가 GRADE_SR_MID건 이상
+//   안전: 그 외(주로 '완료' = 해결됨)
+// ※ '동일 위반'은 같은 '영역 대분류' 여부로만 판단(브랜드·중분류는 보지 않음).
+// ※ 전월 대비 증가율 기준은 제거됨.
+// ※ 임계값(GRADE_SR_HI/MID)을 올리고 내려 위험/주의로 올라가는 정도를 조절한다.
+const GRADE_SR_HI=25;  // 위험으로 올리는 '동일 대분류 최근30일' 건수
+const GRADE_SR_MID=15; // 주의로 올리는 '동일 대분류 최근30일' 건수
 function computeGrade(r,all,now=new Date()){
-  const regDate=r.registered_at?new Date(r.registered_at):null;
-  // '미완료' = '위반' 상태만 의미. '모니터링'은 문제없는 상태라 지연일수에서 제외(완료할 것이 없음).
-  const isOpen=r.item_state==='위반';
-  // (a) 처리 지연 일수
-  let delayDays=0;
-  if(regDate&&isOpen) delayDays=Math.floor((now-regDate)/86400000);
-  // (b) 동일 위반 반복 (최근 30일)
-  const key=`${r.brands?.id}|${r.risk_categories?.id}|${r.risk_subcategories?.id||''}`;
+  // 동일 위반: 같은 '영역 대분류'의 최근 30일 위반/완료 건수
+  const catId=r.risk_categories?.id;
   const ago30=new Date(now); ago30.setDate(now.getDate()-30);
   const sameRecent=all.filter(x=>{
     if(x.item_state!=='위반'&&x.item_state!=='완료') return false;
-    const k=`${x.brands?.id}|${x.risk_categories?.id}|${x.risk_subcategories?.id||''}`;
-    if(k!==key) return false;
+    if(x.risk_categories?.id!==catId) return false;
     const d=x.registered_at?new Date(x.registered_at):null;
     return d&&d>=ago30;
   }).length;
-  // (c) 영역 대분류별 전월 대비 증가율 — Mock 데이터는 일제 입력으로 왜곡되므로 skip
-  let growth=0;
-  const isMock=r.note?.startsWith('[MOCK]');
-  if(!isMock){
-    const catId=r.risk_categories?.id;
-    const y=now.getFullYear(), m=now.getMonth();
-    const prev=new Date(y,m-1,1);
-    const cntInMonth=(yr,mo)=>all.filter(x=>{
-      if(x.risk_categories?.id!==catId||!x.registered_at) return false;
-      const d=new Date(x.registered_at);
-      return d.getFullYear()===yr&&d.getMonth()===mo;
-    }).length;
-    const thisCnt=cntInMonth(y,m);
-    const prevCnt=cntInMonth(prev.getFullYear(),prev.getMonth());
-    growth=prevCnt>0?((thisCnt-prevCnt)/prevCnt)*100:(thisCnt>0?100:0);
-  }
 
-  if(delayDays>=30||sameRecent>=10||growth>=20) return '위험';
-  if(delayDays>=15||sameRecent>=5 ||growth>=10) return '주의';
+  if(r.item_state==='위반'    || sameRecent>=GRADE_SR_HI)  return '위험';
+  if(r.item_state==='모니터링' || sameRecent>=GRADE_SR_MID) return '주의';
   return '안전';
 }
 
