@@ -475,7 +475,7 @@
           <div class="fg"><label class="flb">영역 대분류 *</label><select class="fc" id="p-cat" onchange="onPCat()"><option value="">선택</option></select></div>
           <div class="fg"><label class="flb">영역 중분류</label><select class="fc" id="p-sub"><option value="">없음</option></select></div>
           <div class="fg full"><label class="flb">위반유형 *</label><select class="fc" id="p-violation-type"><option value="">선택</option></select></div>
-          <!-- 상태 선택 (모니터링/위반/완료) -->
+          <!-- 상태 선택 (영역에 따라 JS가 동적 생성) -->
           <div class="fg full">
             <label class="flb">상태 *</label>
             <div class="fc-state" id="p-state-wrap">
@@ -488,19 +488,22 @@
           <!-- 선택한 상태의 건수 -->
           <div class="fg full"><label class="flb" id="p-cnt-lb">건수 *</label><input type="number" class="fc" id="p-cnt" placeholder="상태를 먼저 선택하세요" min="0"></div>
           <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="p-title" placeholder="리스크 제목"></div>
-          <!-- 조치사항: 구분 선택 시 아래 추가 입력란이 나타남 -->
+          <!-- 조치사항: 위반/완료 상태일 때만 활성화 -->
           <div class="fg full"><label class="flb">조치사항</label>
-            <select class="fc" id="p-action" onchange="onPAction()">
+            <textarea class="fc" id="p-action-text" rows="2" placeholder="위반 또는 완료 상태일 때 입력 가능합니다" disabled></textarea>
+          </div>
+          <!-- 감사 영역 전용 필드 -->
+          <div class="fg audit-field-p hidden-fg"><label class="flb">징계유형</label>
+            <select class="fc" id="p-discipline-type">
               <option value="">선택 안 함</option>
-              <option value="징계">징계</option>
-              <option value="징계 외">징계 외</option>
+              <option value="금전회수">금전회수</option>
+              <option value="경징계">경징계</option>
+              <option value="중징계">중징계</option>
+              <option value="형사고발">형사고발</option>
             </select>
           </div>
-          <div class="fg full hidden-fg" id="p-disc-wrap"><label class="flb">징계 대상자 (이름 · 양형)</label>
-            <div id="p-disc-rows"></div>
-            <button type="button" class="btn btn-sm" onclick="addDiscRow('p')" style="align-self:flex-start;margin-top:4px">+ 대상자 추가</button>
-          </div>
-          <div class="fg full hidden-fg" id="p-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="p-action-other" placeholder="조치 내용을 입력하세요"></textarea></div>
+          <div class="fg audit-field-p hidden-fg"><label class="flb">징계자명</label><input type="text" class="fc" id="p-discipline-name" placeholder="이름"></div>
+          <div class="fg audit-field-p hidden-fg"><label class="flb">양형</label><input type="text" class="fc" id="p-sentence" placeholder="예: 정직 3개월"></div>
           <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="p-note" placeholder="추가 메모"></textarea></div>
           <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end;margin-top:4px">
             <button class="btn" onclick="resetInput()">초기화</button>
@@ -523,18 +526,6 @@
       </div>
     </div>
 
-    <!-- Mock 데이터 도구 (임시) -->
-    <div class="card" style="max-width:760px;margin:12px auto 0;border:1px dashed var(--주의-bd);background:var(--주의-bg)">
-      <div class="card-hd" style="background:transparent;border-bottom:1px dashed var(--주의-bd)">
-        <div class="card-hd-left"><div class="card-ttl-bar" style="background:var(--주의-c)"></div><span class="card-ttl" style="color:var(--주의-c)">Mock 데이터 도구 (검토용 · 임시)</span></div>
-        <span class="card-hint" id="mock-status">note 시작이 [MOCK]인 데이터만 다룸</span>
-      </div>
-      <div class="card-bd" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-red" id="mock-gen-btn" onclick="generateMockData()">987건 생성</button>
-        <button class="btn" id="mock-del-btn" onclick="deleteMockData()">Mock 데이터 모두 삭제</button>
-        <span style="font-size:11px;color:var(--text2);margin-left:4px">계열사 · 브랜드 · 영역 대분류 · 등록일 · 상태가 골고루 분포되도록 생성</span>
-      </div>
-    </div>
   </div>
 
   <!-- ════ AI 분석 ════ -->
@@ -658,7 +649,7 @@
         <div class="fg"><label class="flb">등록일 *</label><input type="date" class="fc" id="m-date"></div>
         <div class="fg full">
           <label class="flb">상태 *</label>
-          <div class="fc-state">
+          <div class="fc-state" id="m-state-wrap">
             <button type="button" class="state-opt" id="ms-모니터링" onclick="selectState('m','모니터링')">모니터링</button>
             <button type="button" class="state-opt" id="ms-위반" onclick="selectState('m','위반')">위반</button>
             <button type="button" class="state-opt" id="ms-완료" onclick="selectState('m','완료')">완료</button>
@@ -668,17 +659,20 @@
         <div class="fg"><label class="flb">건수 *</label><input type="number" class="fc" id="m-cnt" placeholder="0" min="0"></div>
         <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="m-title" placeholder="리스크 제목"></div>
         <div class="fg full"><label class="flb">조치사항</label>
-          <select class="fc" id="m-action" onchange="onAction('m')">
+          <textarea class="fc" id="m-action-text" rows="2" placeholder="위반 또는 완료 상태일 때 입력 가능합니다" disabled></textarea>
+        </div>
+        <!-- 감사 영역 전용 필드 -->
+        <div class="fg audit-field-m hidden-fg"><label class="flb">징계유형</label>
+          <select class="fc" id="m-discipline-type">
             <option value="">선택 안 함</option>
-            <option value="징계">징계</option>
-            <option value="징계 외">징계 외</option>
+            <option value="금전회수">금전회수</option>
+            <option value="경징계">경징계</option>
+            <option value="중징계">중징계</option>
+            <option value="형사고발">형사고발</option>
           </select>
         </div>
-        <div class="fg full hidden-fg" id="m-disc-wrap"><label class="flb">징계 대상자 (이름 · 양형)</label>
-          <div id="m-disc-rows"></div>
-          <button type="button" class="btn btn-sm" onclick="addDiscRow('m')" style="align-self:flex-start;margin-top:4px">+ 대상자 추가</button>
-        </div>
-        <div class="fg full hidden-fg" id="m-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="m-action-other" placeholder="조치 내용을 입력하세요"></textarea></div>
+        <div class="fg audit-field-m hidden-fg"><label class="flb">징계자명</label><input type="text" class="fc" id="m-discipline-name" placeholder="이름"></div>
+        <div class="fg audit-field-m hidden-fg"><label class="flb">양형</label><input type="text" class="fc" id="m-sentence" placeholder="예: 정직 3개월"></div>
         <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="m-note" placeholder="추가 메모"></textarea></div>
       </div>
     </div>

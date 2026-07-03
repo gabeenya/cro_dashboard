@@ -20,6 +20,42 @@ let currentUser=null; // 로그인 사용자 프로필 (인증 게이트 통과 
 const ADMIN_EMAIL='gabeenya@gmail.com';
 const CAT_COLORS=['#7a9bc1','#d99893','#d9b683','#94c4a5','#b3a4cc','#92b8d1','#c997b5','#a8aeba'];
 
+// ── 영역별 상태 설정 ────────────────────────────
+const CAT_STATE_CONFIG={
+  '부실채권':{states:['발생','해결']},
+  '감사'    :{states:['적발','조치완료']},
+  '중대재해':{states:['발생','조치완료']}
+};
+// 위반(처리중)에 대응하는 상태값
+const VIOL_STATES=['위반','발생','적발'];
+// 완료에 대응하는 상태값
+const DONE_STATES=['완료','해결','조치완료'];
+function getCatStates(catName){
+  const n=(catName||'').trim();
+  const key=Object.keys(CAT_STATE_CONFIG).find(k=>k===n);
+  return key?CAT_STATE_CONFIG[key].states:['모니터링','위반','완료'];
+}
+function isViolState(s){ return VIOL_STATES.includes(s); }
+function isDoneState(s){ return DONE_STATES.includes(s); }
+// 상태 → CSS 클래스 기반(배지·버튼 색 공유)
+function stateClass(s){
+  if(isViolState(s)) return '위반';
+  if(isDoneState(s)) return '완료';
+  return '모니터링';
+}
+// 상태 버튼 동적 렌더 (wrap id: ${prefix}-state-wrap)
+function renderStateButtons(prefix, catName, currentState=''){
+  const wrap=document.getElementById(prefix+'-state-wrap');
+  if(!wrap) return;
+  const states=getCatStates(catName);
+  wrap.innerHTML=states.map(s=>`<button type="button" class="state-opt${currentState===s?' sel-'+stateClass(s):''}" id="${prefix}s-${s}" onclick="selectState('${prefix}','${s}')">${s}</button>`).join('');
+}
+// 감사 전용 필드 표시/숨김
+function toggleAuditFields(prefix, catName){
+  const isAudit=catName==='감사';
+  document.querySelectorAll('.audit-field-'+prefix).forEach(el=>el.classList.toggle('hidden-fg',!isAudit));
+}
+
 // ── 위반유형 목록 (영역 대분류 이름과 매핑) ────────────────
 const VIOLATION_TYPES = {
   '불법파견': ['피드백 표준 양식 미사용','현장대리인 외 소통','도급범위 초과 업무','채용공고문 노출','고용 미승계 확약서 미징구','자재·소모품 지급','손해배상청구','물량 단가 지급','임차료 수령','근로시간 통제','작업방식 관리','복리후생 간섭','작업환경 결정'],
@@ -69,9 +105,9 @@ function rowCnt(r){
   if(m==null && v==null) return 1;
   return (m||0)+(v||0);
 }
-// 위반 건수: 상태가 위반/완료일 때만 그 행의 건수를 반영
+// 위반 건수: 위반계열(위반/발생/적발) 또는 완료계열(완료/해결/조치완료)일 때만 반영
 function rowViol(r){
-  if(r.item_state!=='위반' && r.item_state!=='완료') return 0;
+  if(!isViolState(r.item_state) && !isDoneState(r.item_state)) return 0;
   return r.violation_count==null ? 1 : r.violation_count;
 }
 const sumCnt =arr=>arr.reduce((s,r)=>s+rowCnt(r),0);   // 전체(모니터링) 건수 합
@@ -265,6 +301,7 @@ async function loadAll(){
   const {data,error}=await sb.from('risks').select(`
     id,registered_at,title,status,grade,note,created_at,
     item_state,violation_count,monitoring_count,store_id,violation_type,
+    discipline_type,discipline_name,sentence,
     divisions(id,name),brands(id,name),
     risk_categories(id,name),risk_subcategories(id,name),
     stores(id,name)
@@ -650,6 +687,8 @@ if('serviceWorker' in navigator){
 
 // ── KPI ────────────────────────────────────
 function renderKPI(risks){
+  // 감사 영역은 KPI에 반영하지 않음
+  risks=risks.filter(r=>r.risk_categories?.name!=='감사');
   const t=sumCnt(risks);
   const now=refNow();
   const thisY=now.getFullYear(), thisM=now.getMonth();
@@ -672,9 +711,9 @@ function renderKPI(risks){
   const monMon=sumCnt(thisMonth);
   const monRate=monMon>0?Math.round(monViol/monMon*100):0;
 
-  // 현재: 조치중(=위반 건수) + 처리완료율(=완료/(위반+완료))
-  const curAct=sumViol(risks.filter(r=>r.item_state==='위반'));
-  const curDone=sumViol(risks.filter(r=>r.item_state==='완료'));
+  // 현재: 조치중(위반계열) + 처리완료율(완료계열/(위반+완료))
+  const curAct=sumViol(risks.filter(r=>isViolState(r.item_state)));
+  const curDone=sumViol(risks.filter(r=>isDoneState(r.item_state)));
   const curTotal=curAct+curDone;
   const curRate=curTotal>0?Math.round(curDone/curTotal*100):0;
 
@@ -1377,12 +1416,17 @@ async function runAIAnalysis(){
 // ── 상태 선택 ──────────────────────────────
 function selectState(prefix,val){
   document.getElementById(prefix+'-state').value=val;
-  ['모니터링','위반','완료'].forEach(s=>{
-    const el=document.getElementById(prefix+'s-'+s);
-    if(!el) return;
-    el.className='state-opt';
-    if(s===val) el.classList.add('sel-'+s);
+  document.querySelectorAll(`[id^="${prefix}s-"]`).forEach(el=>{
+    const s=el.id.slice(prefix.length+2);
+    el.className='state-opt'+(s===val?' sel-'+stateClass(val):'');
   });
+  // 조치사항 텍스트박스: 위반/완료 계열에서만 활성화
+  const atEl=document.getElementById(prefix+'-action-text');
+  if(atEl){
+    const active=isViolState(val)||isDoneState(val);
+    atEl.disabled=!active;
+    atEl.placeholder=active?'조치사항을 입력하세요':'위반 또는 완료 상태일 때 입력 가능합니다';
+  }
   if(prefix==='p'){
     const lb=document.getElementById('p-cnt-lb');
     if(lb) lb.textContent=(val?val+' 건수':'건수')+' *';
@@ -1432,136 +1476,31 @@ function onPCat(){
   subs.forEach(s=>{el.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});
   const catName=(allCats.find(c=>c.id==catId)||{}).name||'';
   fillViolationTypeSel('p', catName);
-}
-// 조치사항 구분 선택 시 추가 입력란 표시/숨김 (prefix: p / m / ie)
-function onAction(prefix){
-  const t=document.getElementById(prefix+'-action').value;
-  const dw=document.getElementById(prefix+'-disc-wrap');
-  if(dw){
-    dw.classList.toggle('hidden-fg', t!=='징계');
-    // 징계로 바꿨는데 행이 하나도 없으면 빈 행 하나 생성
-    if(t==='징계' && !dw.querySelector('.disc-row')) addDiscRow(prefix);
-  }
-  document.getElementById(prefix+'-action-other-wrap').classList.toggle('hidden-fg', t!=='징계 외');
-}
-function onPAction(){ onAction('p'); }
-// ── 징계 대상자 행(이름·양형) 동적 관리 ──────────────
-// 대상자 행 하나의 HTML
-function discRowHTML(name='',penalty=''){
-  return `<div class="disc-row" style="display:flex;gap:8px;margin-bottom:6px">`+
-    `<input type="text" class="fc disc-name" style="flex:1;min-width:0" placeholder="대상자 이름" value="${escapeHTML(name)}">`+
-    `<input type="text" class="fc disc-pen" style="flex:1;min-width:0" placeholder="예: 정직 3개월" value="${escapeHTML(penalty)}">`+
-    `<button type="button" class="btn btn-sm" onclick="removeDiscRow(this)" title="이 대상자 삭제">✕</button>`+
-    `</div>`;
-}
-// 징계 영역 전체(행들 + 추가 버튼) HTML — 인라인 수정처럼 동적으로 그릴 때 사용
-function discWrapHTML(prefix,people,hidden){
-  const list=(people&&people.length)?people:[{name:'',penalty:''}];
-  return `<div class="fg full ${hidden?'hidden-fg':''}" id="${prefix}-disc-wrap"><label class="flb">징계 대상자 (이름 · 양형)</label>`+
-    `<div id="${prefix}-disc-rows">${list.map(p=>discRowHTML(p.name,p.penalty)).join('')}</div>`+
-    `<button type="button" class="btn btn-sm" onclick="addDiscRow('${prefix}')" style="align-self:flex-start;margin-top:4px">+ 대상자 추가</button></div>`;
-}
-// 대상자 행 추가
-function addDiscRow(prefix,name='',penalty=''){
-  const box=document.getElementById(prefix+'-disc-rows');
-  if(box) box.insertAdjacentHTML('beforeend',discRowHTML(name,penalty));
-}
-// 대상자 행 삭제 (최소 1행은 유지)
-function removeDiscRow(btn){
-  const row=btn.closest('.disc-row'); if(!row) return;
-  const box=row.parentElement;
-  row.remove();
-  if(box && !box.querySelector('.disc-row')) box.insertAdjacentHTML('beforeend',discRowHTML());
-}
-// 정적 폼(p/m)의 징계 행들을 people 배열로 다시 그린다
-function renderDiscRows(prefix,people){
-  const box=document.getElementById(prefix+'-disc-rows'); if(!box) return;
-  const list=(people&&people.length)?people:[{name:'',penalty:''}];
-  box.innerHTML=list.map(p=>discRowHTML(p.name,p.penalty)).join('');
-}
-// 폼에서 징계 대상자들을 읽어 [{name,penalty}] 배열로 (둘 다 빈 행은 제외)
-function collectDiscPeople(prefix){
-  const box=document.getElementById(prefix+'-disc-rows'); if(!box) return [];
-  return [...box.querySelectorAll('.disc-row')].map(r=>({
-    name:r.querySelector('.disc-name').value.trim(),
-    penalty:r.querySelector('.disc-pen').value.trim()
-  })).filter(p=>p.name||p.penalty);
-}
-// 조치사항 입력값들을 status 컬럼에 저장할 하나의 텍스트로 합친다.
-//   징계   → "[징계] 이름: A / 양형: X; 이름: B / 양형: Y"  (대상자는 ';'로 구분)
-//   징계 외 → "[징계 외] ○○○"
-function buildActionStatus(type,people,other){
-  if(type==='징계'){
-    const chunks=(people||[]).filter(p=>p.name||p.penalty).map(p=>{
-      const parts=[];
-      if(p.name) parts.push('이름: '+p.name);
-      if(p.penalty) parts.push('양형: '+p.penalty);
-      return parts.join(' / ');
-    }).filter(Boolean);
-    return '[징계]'+(chunks.length?' '+chunks.join('; '):'');
-  }
-  if(type==='징계 외'){
-    return '[징계 외]'+(other?' '+other:'');
-  }
-  return null;
-}
-// status 합성 텍스트를 조치사항 입력값으로 되돌린다 (수정 화면 채우기용).
-// people: [{name,penalty}] 배열. name/penalty는 PPT 등 단일 표시용 편의값(줄바꿈으로 합침).
-// 옛 자유텍스트(접두사 없음)는 내용 보존을 위해 '징계 외'의 조치내용으로 흡수한다.
-function parseActionStatus(status){
-  const s=String(status||'').trim();
-  if(s.startsWith('[징계 외]')) return {type:'징계 외',people:[],name:'',penalty:'',other:s.slice('[징계 외]'.length).trim()};
-  if(s.startsWith('[징계]')){
-    const body=s.slice('[징계]'.length).trim();
-    const people=body?body.split(';').map(chunk=>{
-      let name='',penalty='';
-      chunk.split('/').forEach(part=>{
-        const p=part.trim();
-        if(p.startsWith('이름:')) name=p.slice('이름:'.length).trim();
-        else if(p.startsWith('양형:')) penalty=p.slice('양형:'.length).trim();
-      });
-      return {name,penalty};
-    }).filter(p=>p.name||p.penalty):[];
-    return {type:'징계',people,
-      name:people.map(p=>p.name||'-').join('\n'),
-      penalty:people.map(p=>p.penalty||'-').join('\n'),
-      other:''};
-  }
-  return s ? {type:'징계 외',people:[],name:'',penalty:'',other:s} : {type:'',people:[],name:'',penalty:'',other:''};
-}
-// 수정 화면(prefix)에서 조치사항 입력란을 status 값으로 채운다.
-function fillActionFields(prefix,status){
-  const a=parseActionStatus(status);
-  document.getElementById(prefix+'-action').value=a.type;
-  renderDiscRows(prefix,a.people);
-  document.getElementById(prefix+'-action-other').value=a.other;
-  onAction(prefix);
-}
-// 수정 화면(prefix)의 조치사항 입력값을 합성 텍스트로 반환한다.
-function buildActionFromForm(prefix){
-  return buildActionStatus(
-    document.getElementById(prefix+'-action').value,
-    collectDiscPeople(prefix),
-    document.getElementById(prefix+'-action-other').value.trim()
-  );
+  renderStateButtons('p', catName);
+  // 영역 바꾸면 상태·조치사항 초기화
+  document.getElementById('p-state').value='';
+  const atEl=document.getElementById('p-action-text');
+  if(atEl){atEl.disabled=true;atEl.placeholder='위반 또는 완료 상태일 때 입력 가능합니다';}
+  toggleAuditFields('p', catName);
 }
 function resetInput(){
   ['p-div','p-brand','p-cat','p-sub','p-store'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   fillViolationTypeSel('p','');
-  ['p-title','p-note','p-action-other'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  ['p-title','p-note'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   document.getElementById('p-cnt').value='';
   document.getElementById('p-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('p-brand').innerHTML='<option value="">계열사 먼저 선택</option>';
   document.getElementById('p-sub').innerHTML='<option value="">없음</option>';
   const psw=document.getElementById('p-store-wrap'); if(psw) psw.classList.add('hidden-fg');
   // 조치사항 초기화
-  const pa=document.getElementById('p-action'); if(pa) pa.value='';
-  renderDiscRows('p',[]);
-  ['p-disc-wrap','p-action-other-wrap'].forEach(i=>{const el=document.getElementById(i);if(el)el.classList.add('hidden-fg');});
+  const at=document.getElementById('p-action-text');
+  if(at){at.value='';at.disabled=true;at.placeholder='위반 또는 완료 상태일 때 입력 가능합니다';}
+  // 감사 전용 필드 초기화
+  ['p-discipline-type','p-discipline-name','p-sentence'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  document.querySelectorAll('.audit-field-p').forEach(el=>el.classList.add('hidden-fg'));
+  // 상태 초기화 (기본 3버튼 복원)
   document.getElementById('p-state').value='';
-  ['모니터링','위반','완료'].forEach(s=>{
-    const el=document.getElementById('ps-'+s); if(el) el.className='state-opt';
-  });
+  renderStateButtons('p','');
   const cntLb=document.getElementById('p-cnt-lb'); if(cntLb) cntLb.textContent='건수 *';
 }
 async function saveInput(){
@@ -1577,23 +1516,25 @@ async function saveInput(){
   const cnt=document.getElementById('p-cnt').value;
   const vtElP=document.getElementById('p-violation-type');
   const violationType=vtElP?.value||null;
-  // 조치사항 합성 (status 컬럼에 저장)
-  const status=buildActionFromForm('p');
+  const actionText=document.getElementById('p-action-text')?.value.trim()||null;
+  const disciplineType=document.getElementById('p-discipline-type')?.value||null;
+  const disciplineName=document.getElementById('p-discipline-name')?.value.trim()||null;
+  const sentence=document.getElementById('p-sentence')?.value.trim()||null;
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
   if(vtElP && vtElP.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('p-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
-  // grade는 자동 산정값으로 덮어씀. 저장 시 임시 '안전'으로 넣고 loadAll에서 재계산.
   const {error}=await sb.from('risks').insert({
     division_id:parseInt(divId),brand_id:brandId?parseInt(brandId):null,category_id:parseInt(catId),
     subcategory_id:subId?parseInt(subId):null,
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
-    status:status||null,note:note||null,
+    status:actionText,note:note||null,
     violation_count:state==='모니터링'?null:cntVal,
     monitoring_count:state==='모니터링'?cntVal:null,
-    violation_type:violationType||null
+    violation_type:violationType||null,
+    discipline_type:disciplineType,discipline_name:disciplineName,sentence
   });
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -1956,17 +1897,16 @@ function renderRecentBody(){
 }
 
 function buildInlineEditRow(r){
-  const stOpts=['모니터링','위반','완료'];
   const curState=r.item_state||'';
   const subs=allSubs.filter(s=>s.category_id===r.risk_categories?.id);
   const brands=allBrands.filter(b=>b.division_id===r.divisions?.id);
   const showStore=r.divisions?.name==='유통' && r.brands?.name==='리테일';
   const stores=showStore?allStores.filter(s=>s.division_id===r.divisions?.id):[];
   const curStoreId=r.store_id||'';
-  const act=parseActionStatus(r.status); // 조치사항 미리 채우기
-  const actOpts=['징계','징계 외'];
   const ieCatName=(allCats.find(c=>c.id===r.risk_categories?.id)||{}).name||'';
   const ieVT=r.violation_type||'';
+  const ieStates=getCatStates(ieCatName);
+  const isAudit=ieCatName==='감사';
   return `<tr class="ier-row"><td colspan="8">
     <div class="ier-form">
       <div class="fg">
@@ -2009,8 +1949,8 @@ function buildInlineEditRow(r){
       </div>
       <div class="fg full">
         <label class="flb">상태 *</label>
-        <div class="fc-state">
-          ${stOpts.map(s=>`<button type="button" class="state-opt ${s===curState?'sel-'+s:''}" id="ies-${s}" onclick="selectStateInline('${s}')">${s}</button>`).join('')}
+        <div class="fc-state" id="ies-wrap">
+          ${ieStates.map(s=>`<button type="button" class="state-opt${s===curState?' sel-'+stateClass(s):''}" id="ies-${s}" onclick="selectState('ie','${s}')">${s}</button>`).join('')}
         </div>
         <input type="hidden" id="ie-state" value="${curState}">
       </div>
@@ -2022,13 +1962,16 @@ function buildInlineEditRow(r){
       </div>
       <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="ie-title" value="${escapeHTML(r.title||'')}"></div>
       <div class="fg full"><label class="flb">조치사항</label>
-        <select class="fc" id="ie-action" onchange="onAction('ie')">
-          <option value="">선택 안 함</option>
-          ${actOpts.map(o=>`<option value="${o}" ${o===act.type?'selected':''}>${o}</option>`).join('')}
-        </select>
+        <textarea class="fc" id="ie-action-text" rows="2" ${(isViolState(curState)||isDoneState(curState))?'':'disabled'} placeholder="${(isViolState(curState)||isDoneState(curState))?'조치사항을 입력하세요':'위반 또는 완료 상태일 때 입력 가능합니다'}">${escapeHTML(r.status||'')}</textarea>
       </div>
-      ${discWrapHTML('ie',act.people,act.type!=='징계')}
-      <div class="fg full ${act.type==='징계 외'?'':'hidden-fg'}" id="ie-action-other-wrap"><label class="flb">조치 내용</label><textarea class="fc" id="ie-action-other" placeholder="조치 내용을 입력하세요">${escapeHTML(act.other)}</textarea></div>
+      ${isAudit?`
+      <div class="fg"><label class="flb">징계유형</label><select class="fc" id="ie-discipline-type">
+        <option value="">선택 안 함</option>
+        ${['금전회수','경징계','중징계','형사고발'].map(v=>`<option value="${v}"${r.discipline_type===v?' selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div class="fg"><label class="flb">징계자명</label><input type="text" class="fc" id="ie-discipline-name" value="${escapeHTML(r.discipline_name||'')}" placeholder="이름"></div>
+      <div class="fg"><label class="flb">양형</label><input type="text" class="fc" id="ie-sentence" value="${escapeHTML(r.sentence||'')}" placeholder="예: 정직 3개월"></div>
+      `:''}
       <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="ie-note">${escapeHTML(r.note||'')}</textarea></div>
       <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">
         <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="deleteInline('${r.id}')">삭제</button>
@@ -2081,13 +2024,6 @@ function onIECat(){
   const catName=(allCats.find(c=>c.id==catId)||{}).name||'';
   fillViolationTypeSel('ie', catName);
 }
-function selectStateInline(val){
-  document.getElementById('ie-state').value=val;
-  ['모니터링','위반','완료'].forEach(s=>{
-    const el=document.getElementById('ies-'+s);
-    if(el) el.className='state-opt'+(s===val?' sel-'+s:'');
-  });
-}
 async function saveInline(id){
   const divId=document.getElementById('ie-div').value;
   const brandId=document.getElementById('ie-brand').value;
@@ -2097,11 +2033,14 @@ async function saveInline(id){
   const state=document.getElementById('ie-state').value;
   const date=document.getElementById('ie-date').value;
   const title=document.getElementById('ie-title').value.trim();
-  const status=buildActionFromForm('ie');
   const note=document.getElementById('ie-note').value.trim();
   const cnt=document.getElementById('ie-cnt').value;
   const vtElIE=document.getElementById('ie-violation-type');
   const violationType=vtElIE?.value||null;
+  const actionText=document.getElementById('ie-action-text')?.value.trim()||null;
+  const disciplineType=document.getElementById('ie-discipline-type')?.value||null;
+  const disciplineName=document.getElementById('ie-discipline-name')?.value.trim()||null;
+  const ieSentence=document.getElementById('ie-sentence')?.value.trim()||null;
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElIE && vtElIE.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const cntVal=parseInt(cnt);
@@ -2112,10 +2051,11 @@ async function saveInline(id){
     subcategory_id:subId?parseInt(subId):null,
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
-    status:status||null,note:note||null,
+    status:actionText,note:note||null,
     violation_count:state==='모니터링'?null:cntVal,
     monitoring_count:state==='모니터링'?cntVal:null,
-    violation_type:violationType||null
+    violation_type:violationType||null,
+    discipline_type:disciplineType,discipline_name:disciplineName,sentence:ieSentence
   }).eq('id',id);
   if(error){
     if(btn){btn.textContent='저장'; btn.disabled=false;}
@@ -2156,13 +2096,17 @@ function openEdit(id){
   },80);
   document.getElementById('m-date').value=r.registered_at||'';
   document.getElementById('m-title').value=r.title||'';
-  fillActionFields('m', r.status);
+  // 조치사항 (단순 텍스트)
+  const mat=document.getElementById('m-action-text');
+  if(mat){ mat.value=r.status||''; }
+  // 감사 전용 필드
+  const mdt=document.getElementById('m-discipline-type'); if(mdt) mdt.value=r.discipline_type||'';
+  const mdn=document.getElementById('m-discipline-name'); if(mdn) mdn.value=r.discipline_name||'';
+  const mst=document.getElementById('m-sentence'); if(mst) mst.value=r.sentence||'';
   document.getElementById('m-note').value=r.note||'';
-  // 건수는 한 칸으로 통합 — 상태와 무관하게 그 행의 입력 건수를 표시
   document.getElementById('m-cnt').value=(r.monitoring_count??r.violation_count??'');
-  // 상태 복원
   if(r.item_state) selectState('m',r.item_state);
-  else { document.getElementById('m-state').value=''; ['모니터링','위반','완료'].forEach(s=>{const el=document.getElementById('ms-'+s);if(el)el.className='state-opt';}); }
+  else { document.getElementById('m-state').value=''; }
   document.getElementById('mo-ov').classList.add('open');
 }
 function closeModal(){document.getElementById('mo-ov').classList.remove('open');editId=null;}
@@ -2190,6 +2134,8 @@ function onMCat(){
   subs.forEach(s=>{el.innerHTML+=`<option value="${s.id}">${s.name}</option>`;});
   const catName=(allCats.find(c=>c.id==catId)||{}).name||'';
   fillViolationTypeSel('m', catName);
+  renderStateButtons('m', catName);
+  toggleAuditFields('m', catName);
 }
 async function saveModal(){
   const divId=document.getElementById('m-div').value;
@@ -2200,26 +2146,29 @@ async function saveModal(){
   const state=document.getElementById('m-state').value;
   const date=document.getElementById('m-date').value;
   const title=document.getElementById('m-title').value.trim();
-  const status=buildActionFromForm('m');
   const note=document.getElementById('m-note').value.trim();
   const cnt=document.getElementById('m-cnt').value;
   const vtElM=document.getElementById('m-violation-type');
   const violationType=vtElM?.value||null;
+  const actionText=document.getElementById('m-action-text')?.value.trim()||null;
+  const disciplineType=document.getElementById('m-discipline-type')?.value||null;
+  const disciplineName=document.getElementById('m-discipline-name')?.value.trim()||null;
+  const mSentence=document.getElementById('m-sentence')?.value.trim()||null;
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElM && vtElM.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
-  // grade는 자동 산정. DB에는 임시 '안전' 저장 후 loadAll에서 재계산
   const {error}=await sb.from('risks').update({
     division_id:parseInt(divId),brand_id:brandId?parseInt(brandId):null,category_id:parseInt(catId),
     subcategory_id:subId?parseInt(subId):null,
     store_id:storeId?parseInt(storeId):null,
     grade:'안전',item_state:state,registered_at:date,title,
-    status:status||null,note:note||null,
+    status:actionText,note:note||null,
     violation_count:state==='모니터링'?null:cntVal,
     monitoring_count:state==='모니터링'?cntVal:null,
-    violation_type:violationType||null
+    violation_type:violationType||null,
+    discipline_type:disciplineType,discipline_name:disciplineName,sentence:mSentence
   }).eq('id',editId);
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -2467,21 +2416,20 @@ async function downloadPPT(){
     commentBox(slA,5.55,1.45);
   }
 
-  // (2) 징계 조치 현황: status가 '[징계]'로 시작하는 건 (기준월)
-  const disc=prevRisks.filter(r=>String(r.status||'').startsWith('[징계]'));
-  const slB=pptx.addSlide(); head(slB,'주요 위험영역 및 조치 현황 (2) — 징계 조치 현황',`${prevLabel} · 징계로 조치된 건`);
+  // (2) 징계 조치 현황: 감사 영역 중 discipline_name이 있는 건 (기준월)
+  const disc=prevRisks.filter(r=>r.risk_categories?.name==='감사'&&r.discipline_name);
+  const slB=pptx.addSlide(); head(slB,'주요 위험영역 및 조치 현황 (2) — 징계 조치 현황',`${prevLabel} · 감사 영역 징계 건`);
   {
-    const hdr=['계열사','브랜드/조직','리스크명','이름','양형','등록일'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:(i>=3&&i<=4)?'center':'left',valign:'middle',fontSize:10}}));
+    const hdr=['계열사','브랜드/조직','리스크명','징계자명','양형','등록일'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:(i>=3&&i<=4)?'center':'left',valign:'middle',fontSize:10}}));
     const rows=[hdr];
     disc.slice(0,9).forEach((r,i)=>{
-      const a=parseActionStatus(r.status);
       const fill=i%2?RPT.BG:RPT.SURF;
       rows.push([
         {text:r.divisions?.name||'-',options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
         {text:r.brands?.name||'-',options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
         {text:r.title||'-',options:{color:RPT.TEXT,fill,align:'left',valign:'middle',fontSize:9}},
-        {text:a.name||'-',options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
-        {text:a.penalty||'-',options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
+        {text:r.discipline_name||'-',options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
+        {text:r.sentence||'-',options:{color:RPT.TEXT,fill,align:'center',valign:'middle',fontSize:9}},
         {text:r.registered_at||'-',options:{color:RPT.TEXT2,fill,align:'center',valign:'middle',fontSize:9}}
       ]);
     });
@@ -2776,123 +2724,9 @@ async function downloadPPT(){
 function dlBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
 
 // ── Mock 데이터 도구 (검토용) ───────────────
-// 식별: note 시작이 '[MOCK]' → 삭제 시 이 prefix로 일괄 삭제
-const MOCK_TAG='[MOCK]';
-const MOCK_TITLES=[
-  '고객 클레임 처리 지연','부정 리뷰 다발','위생 점검 미흡','계약서 누락',
-  '인허가 갱신 지연','회계 보고 누락','광고 표시 위반','개인정보 유출 의심',
-  '재고 불일치','협력사 부정','임직원 분쟁','매장 안전사고',
-  '환경 규정 위반','지적재산 침해','품질 결함','노무 분쟁',
-  '세무 조사 대응','자금 횡령 의심','부정 청탁 신고','계약 분쟁'
-];
-const MOCK_STATUS=['모니터링 진행 중','시정 요청 발송','조치 완료','법무팀 검토','외부 자문 의뢰'];
-function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
-function pickWeighted(items){
-  // items = [[value, weight], ...]
-  const total=items.reduce((s,x)=>s+x[1],0);
-  let r=Math.random()*total;
-  for(const [v,w] of items){ if((r-=w)<=0) return v; }
-  return items[items.length-1][0];
-}
-
-async function generateMockData(){
-  if(!allDiv.length||!allBrands.length||!allCats.length){
-    showToast('마스터 데이터(계열사/브랜드/영역 대분류)가 비어있어요');return;
-  }
-  if(!confirm('987건의 Mock 데이터를 생성합니다. 계속하시겠어요?')) return;
-  const btn=document.getElementById('mock-gen-btn');
-  const status=document.getElementById('mock-status');
-  btn.disabled=true; btn.textContent='생성 중...';
-  const TARGET=987;
-  const now=new Date();
-
-  // 계열사별 가중치 (최소 10% 보장)
-  const DIV_WEIGHTS={'패션':28,'유통':22,'외식':18,'파크':12,'건설':10,'소법인':10};
-  const divWeights=allDiv.map(d=>[d, DIV_WEIGHTS[d.name]||15]);
-  // 영역 대분류별 가중치 (앞쪽이 많고 뒤로 갈수록 작아짐, 최소 5)
-  const catWeights=allCats.map((c,i)=>[c, Math.max(5, 30 - i*3)]);
-  // 등급 목표 분포: 안전 ≫ 주의 ≫ 위험
-  const gradeWeights=[['안전',62],['주의',25],['위험',13]];
-
-  const batch=[];
-  for(let i=0;i<TARGET;i++){
-    const div=pickWeighted(divWeights);
-    const divBrands=allBrands.filter(b=>b.division_id===div.id);
-    if(!divBrands.length) continue;
-    const brand=pick(divBrands);
-    const cat=pickWeighted(catWeights);
-    const catSubs=allSubs.filter(s=>s.category_id===cat.id);
-    const sub=catSubs.length?pick(catSubs):null;
-
-    // 등급 목표를 먼저 정한 뒤, 그에 맞는 등록일/상태 조합
-    const gradeTarget=pickWeighted(gradeWeights);
-    let daysAgo, state;
-    if(gradeTarget==='안전'){
-      daysAgo=Math.floor(Math.random()*7);       // 0~6일
-      state=pickWeighted([['모니터링',35],['위반',20],['완료',45]]);
-    } else if(gradeTarget==='주의'){
-      daysAgo=7+Math.floor(Math.random()*7);     // 7~13일
-      state=pickWeighted([['모니터링',60],['위반',40]]);
-    } else { // 위험
-      daysAgo=14+Math.floor(Math.random()*90);   // 14~103일
-      state=pickWeighted([['모니터링',70],['위반',30]]);
-    }
-    const regDate=new Date(now); regDate.setDate(now.getDate()-daysAgo);
-
-    // 모니터링/위반 카운트
-    const monCnt=Math.floor(Math.random()*120)+5;
-    const violCnt=state==='완료'?Math.floor(monCnt*Math.random()*0.6)
-                  :state==='위반'?Math.floor(monCnt*Math.random()*0.4)
-                  :Math.floor(monCnt*Math.random()*0.15);
-
-    batch.push({
-      division_id:div.id,brand_id:brand.id,category_id:cat.id,
-      subcategory_id:sub?.id||null,
-      grade:'안전', // loadAll에서 자동 재계산
-      item_state:state,
-      registered_at:regDate.toISOString().split('T')[0],
-      title:`${cat.name} - ${pick(MOCK_TITLES)} #${i+1}`,
-      status:pick(MOCK_STATUS),
-      note:`${MOCK_TAG} 임의 생성 데이터`,
-      violation_count:violCnt,
-      monitoring_count:monCnt
-    });
-  }
-  // 배치 insert
-  const CHUNK=500;
-  let inserted=0;
-  for(let i=0;i<batch.length;i+=CHUNK){
-    const chunk=batch.slice(i,i+CHUNK);
-    const {error}=await sb.from('risks').insert(chunk);
-    if(error){
-      showToast('생성 중 오류: '+error.message);
-      btn.disabled=false; btn.textContent='987건 생성';
-      await loadAll();
-      return;
-    }
-    inserted+=chunk.length;
-    status.textContent=`생성 중... ${inserted}/${TARGET}`;
-  }
-  btn.disabled=false; btn.textContent='1,254건 생성';
-  status.textContent=`note 시작이 ${MOCK_TAG}인 데이터만 다룸`;
-  showToast(`Mock 데이터 ${TARGET}건 생성 완료!`);
-  await loadAll();
-}
-
-async function deleteMockData(){
-  if(!confirm(`Mock 데이터(note 시작이 ${MOCK_TAG}인 모든 항목)를 삭제합니다. 계속?`)) return;
-  const btn=document.getElementById('mock-del-btn');
-  btn.disabled=true; btn.textContent='삭제 중...';
-  const {error}=await sb.from('risks').delete().like('note',`${MOCK_TAG}%`);
-  btn.disabled=false; btn.textContent='Mock 데이터 모두 삭제';
-  if(error){showToast('삭제 실패: '+error.message);return;}
-  showToast('Mock 데이터 삭제 완료');
-  await loadAll();
-}
-
 // ── 유틸 ───────────────────────────────────
 function gradeBadge(g){if(!g)return '-';return `<span class="badge b-${g}">${g}</span>`;}
-function stateBadge(s){if(!s)return '-';return `<span class="bs bs-${s}">${s}</span>`;}
+function stateBadge(s){if(!s)return '-';return `<span class="bs bs-${stateClass(s)}">${s}</span>`;}
 function fmtD(s){if(!s)return '-';return s.slice(2).replace(/-/g,'.');}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 
