@@ -131,7 +131,7 @@ async function authGate(){
     return false;
   }
   currentUser = profile;
-  document.body.style.visibility = 'visible';
+  document.documentElement.style.visibility = 'visible';
   // 세션 만료/로그아웃 발생 시 자동 이동
   sb.auth.onAuthStateChange((evt,sess)=>{
     if(evt==='SIGNED_OUT'||!sess) location.replace('login.html');
