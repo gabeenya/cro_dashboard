@@ -29,7 +29,7 @@ jobs:
       - name: Node.js 준비
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: 빌드 도구 설치
         run: npm ci
