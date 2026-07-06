@@ -117,7 +117,9 @@ function flatViolationTypes(catName){
 function rowCnt(r){
   const m=r.monitoring_count, v=r.violation_count;
   if(m==null && v==null) return 1;
-  return (m||0)+(v||0);
+  // 영업비밀의 '모니터링' 건수만 1/10 비율로 반영(위반/완료는 그대로). 외식BG 연동분 포함.
+  const mEff = r.risk_categories?.name==='영업비밀' ? Math.round((m||0)/10) : (m||0);
+  return mEff+(v||0);
 }
 // 위반 건수: 위반계열(위반/발생/적발) 또는 완료계열(완료/해결/조치완료)일 때만 반영
 function rowViol(r){
@@ -999,8 +1001,17 @@ function fillGradeRefMonth(){
 }
 function onGradeRefMonthChange(){
   const v=document.getElementById('grade-ref-month')?.value||'';
-  if(v){ const [y,m]=v.split('-').map(Number); gradeRefMonth={y,m}; }
-  else gradeRefMonth=null;
+  // 특정 월을 선택하면 그 달만(당월), 다시 '이번달'로 돌아가면 연누적으로 자동 전환
+  // — 사용자가 별도로 연누적/당월 토글을 안 건드려도 "누적" 또는 "선택한 월의 데이터"로 보이게 함
+  const modeSel=document.getElementById('grade-period-mode');
+  if(v){
+    const [y,m]=v.split('-').map(Number); gradeRefMonth={y,m};
+    gradePeriodMode='당월';
+  } else {
+    gradeRefMonth=null;
+    gradePeriodMode='연누적';
+  }
+  if(modeSel) modeSel.value=gradePeriodMode;
   recomputeGrades();
 }
 
@@ -1873,7 +1884,8 @@ async function downloadBulkTemplate(){
     {header:'조치내용(징계 외 시)',key:'actOther',width:30},
     {header:'위반유형',key:'vtype',width:26},
     {header:'금액(부실채권 미입금/2개월초과미입금 시 필수)',key:'amount',width:32},
-    {header:'징계유형(감사 시 필수)',key:'discType',width:22}
+    {header:'징계유형(감사 시 필수)',key:'discType',width:22},
+    {header:'외부노출 여부(O 또는 공란)',key:'external',width:20}
   ];
   const hdr=ws.getRow(1);
   hdr.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
@@ -1940,6 +1952,23 @@ async function downloadBulkTemplate(){
     wb.definedNames.add(`_참조!$${L}$2:$${L}$${DISCIPLINE_TYPES.length+1}`,'_disctypes');
     col++;
   }
+  // 영역 대분류별 상태 옵션(부실채권=발생/해결, 감사=적발/조치완료, 중대재해=발생/조치완료, 그 외=모니터링/위반/완료)
+  allCats.forEach(cat=>{
+    const states=getCatStates(cat.name);
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value=cat.name;
+    states.forEach((s,i)=>{ ref.getCell(`${L}${i+2}`).value=s; });
+    wb.definedNames.add(`_참조!$${L}$2:$${L}$${states.length+1}`,`_st_${sanitizeName(cat.name)}`);
+    col++;
+  });
+  // 외부노출 여부 목록
+  {
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value='__외부노출__';
+    ref.getCell(`${L}2`).value='O';
+    wb.definedNames.add(`_참조!$${L}$2:$${L}$2`,'_external');
+    col++;
+  }
 
   // 3) 입력 시트에 데이터 검증 적용 (행 2 ~ 501)
   const ROWS=500;
@@ -1949,10 +1978,11 @@ async function downloadBulkTemplate(){
     ws.getCell(`C${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_b_"&SUBSTITUTE(B${r}," ","_"))`]};
     ws.getCell(`D${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_cats']};
     ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
-    ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_states']};
+    ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_st_"&SUBSTITUTE(D${r}," ","_"))`]};
     ws.getCell(`I${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_actions']};
     ws.getCell(`M${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_v_"&SUBSTITUTE(D${r}," ","_"))`]};
     ws.getCell(`O${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_disctypes']};
+    ws.getCell(`P${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_external']};
   }
 
   // 4) 안내 시트
@@ -1964,14 +1994,16 @@ async function downloadBulkTemplate(){
     '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
     '2. 별표(*) 표시 컬럼은 필수입니다. (건수 포함)',
     '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분 / 위반유형 / 징계유형은 드롭다운에서 선택하세요.',
-    '4. 브랜드는 계열사를, 영역 중분류·위반유형은 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
+    '4. 브랜드는 계열사를, 영역 중분류·위반유형·상태는 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
     '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
-    '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링이면 모니터링 건수, 위반/완료면 위반 건수로 집계)',
+    '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링/발생/적발이면 모니터링 건수, 위반/완료/해결/조치완료면 위반 건수로 집계)',
+    '6-1. 상태 옵션은 영역마다 다릅니다 — 부실채권: 발생/해결, 감사: 적발/조치완료, 중대재해: 발생/조치완료, 그 외 영역: 모니터링/위반/완료.',
     '7. 영역 대분류가 \'감사\'이면 징계유형·징계자명(이름)·양형이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
     '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'2개월 초과 미입금\'이면 금액이 필수입니다.',
-    '9. 등급(A/B/C/D)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
-    '10. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
-    '11. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
+    '9. 외부노출 여부: 해당 건이 외부에 노출됐으면 O를 입력하세요(공란=미노출). 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP)에서는 이 값이 F등급 산정에 사용됩니다.',
+    '10. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
+    '11. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
+    '12. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
   ];
   lines.forEach((t,i)=>{ guide.getCell(`A${i+1}`).value=t; });
   guide.getCell('A1').font={bold:true,size:14,color:{argb:'FFC8102E'}};
@@ -2025,6 +2057,7 @@ async function handleBulkUpload(ev){
       else if(t.startsWith('위반유형')) colMap.vtype=colNumber;
       else if(t.startsWith('금액')) colMap.amount=colNumber;
       else if(t.startsWith('징계유형')) colMap.discType=colNumber;
+      else if(t.startsWith('외부노출')) colMap.external=colNumber;
     });
     const missing=['date','div','brand','cat','title','state','cnt'].filter(k=>!colMap[k]);
     if(missing.length){
@@ -2053,6 +2086,7 @@ async function handleBulkUpload(ev){
       const vtype=colMap.vtype?String(row.getCell(colMap.vtype).value||'').trim():'';
       const amountStr=colMap.amount?String(row.getCell(colMap.amount).value??'').trim():'';
       const discType=colMap.discType?String(row.getCell(colMap.discType).value||'').trim():'';
+      const externalStr=colMap.external?String(row.getCell(colMap.external).value||'').trim():'';
 
       // 전부 비어있으면 skip
       if(!dateCell&&!divName&&!brandName&&!catName&&!title&&!state&&!cntStr) continue;
@@ -2094,7 +2128,8 @@ async function handleBulkUpload(ev){
       }
 
       if(!title) errs.push('리스크명 누락');
-      if(!['모니터링','위반','완료'].includes(state)) errs.push('상태는 모니터링/위반/완료 중 하나');
+      const validStates=getCatStates(catObj?.name);
+      if(!validStates.includes(state)) errs.push(`상태는 ${validStates.join('/')} 중 하나`);
 
       // 건수(필수)
       let cntVal=null;
@@ -2126,6 +2161,9 @@ async function handleBulkUpload(ev){
         amountVal=isNaN(Number(amountStr))?null:parseInt(amountStr);
       }
 
+      // 외부노출 여부 — 'O'만 노출로 인정, 그 외(공란 등)는 미노출
+      const externalExposure=externalStr.toUpperCase()==='O';
+
       if(errs.length){
         errors.push({row:r, msgs:errs});
       } else {
@@ -2138,7 +2176,8 @@ async function handleBulkUpload(ev){
           monitoring_count:state==='모니터링'?cntVal:null,
           violation_type:vtype||null,
           discipline_type:discType||null, discipline_name:actName||null, sentence:actPen||null,
-          amount:amountVal
+          amount:amountVal,
+          external_exposure:externalExposure
         });
       }
     }

@@ -1,4 +1,4 @@
-const CACHE='eland-cro-v30';
+const CACHE='eland-cro-v32';
 const STATIC=[
   './',
   './index.html',
@@ -6,7 +6,8 @@ const STATIC=[
   './style.css',
   './app.js',
   './favicon.svg',
-  './manifest.json'
+  './manifest.json',
+  './guide.html'
 ];
 
 self.addEventListener('install', e=>{
