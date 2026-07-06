@@ -164,6 +164,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* ════ KPI 레이아웃 ════ */
 .kpi-section{margin-bottom:16px}
+.kpi-section-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.kpi-section-ttl{font-size:13px;font-weight:700;color:var(--text)}
+.audit-sub-ttl{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
 .kpi-row{display:grid;gap:10px;margin-bottom:10px}
 .kpi-col{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 
@@ -218,11 +221,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .fill-blue{background:var(--navy2)}
 .fill-green{background:#059669}
 .fill-soft{background:var(--soft)}
-.kpi-sla{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;color:var(--text2);cursor:pointer}
-.kpi-sla select{font-size:11px;padding:1px 3px}
-.kpi-sla b{color:var(--text)}
-.kpi-sla.has-alert b{color:#ea580c}
-.kpi-sla:hover{color:var(--text)}
+.kpi-sla-inline{cursor:pointer}
+.kpi-sla-inline .kpi-num-label{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.kpi-sla-inline select{font-size:10.5px;padding:1px 2px;font-family:var(--font)}
+.kpi-sla-inline:hover .kpi-num-label{color:var(--text)}
+.kpi-sla-inline .kpi-num-val{color:var(--text3)}
+.kpi-sla-inline.has-alert .kpi-num-val{color:#ea580c}
 
 /* ════ 카드 ════ */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);margin-bottom:12px;overflow:hidden}
@@ -286,7 +290,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .mx th.rh{text-align:left;padding-left:12px}
 .mx th:nth-child(1){width:52px;text-align:center}
 .mx th:nth-child(2){width:130px}
-.mx th:nth-child(3){width:100px}
+.mx th:nth-child(3){width:120px}
 .mx td{padding:12px 5px;text-align:center;border-bottom:1px solid var(--bg)}
 .mx td.name-col{text-align:left;font-weight:700;font-size:12px;padding-left:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mx tr:last-child td{border-bottom:none}
@@ -305,6 +309,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* ════ 리스크 노출/측정판 ════ */
 .live-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:2px 8px;animation:livePulse 1.6s ease-in-out infinite}
+.info-btn{width:18px;height:18px;border-radius:50%;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1}
+.info-btn:hover{background:var(--border);color:var(--text)}
 @keyframes livePulse{0%,100%{opacity:1}50%{opacity:0.5}}
 .grade-legend{display:flex;align-items:center;gap:14px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .legend-item{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
@@ -314,9 +320,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .rank-2{background:#8a97a8}
 .rank-3{background:#c9702b}
 .mx td.overall-col{text-align:center}
-.overall-score{display:block;font-size:10px;color:var(--text3);margin-top:3px;font-weight:600}
-.grade-cell{display:flex;flex-direction:column;align-items:center;gap:3px}
-.grade-cell .gc-frac{font-size:10px;color:var(--text3)}
+.grade-cell{text-align:center;width:100%}
+.grade-cell .cpill{display:inline-block}
+.overall-score{display:block;width:fit-content;margin:4px auto 0;font-size:13px;color:#2563eb;font-weight:800}
+.cpill-lg{font-size:14px;padding:5px 14px;border-radius:7px}
+.grade-cell .gc-frac{display:block;width:fit-content;margin:2px auto 0;font-size:10px;color:var(--text3)}
 .mx tr.mx-row-dim{opacity:0.4}
 /* 새로고침·필터 변경 시 행이 위에서 아래로 순차 등장 (실시간 갱신 느낌) */
 @keyframes mxRowIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}

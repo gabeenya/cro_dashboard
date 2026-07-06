@@ -208,20 +208,23 @@
             <div class="kpi-num-label">조치중</div>
             <div class="kpi-num-val v-조치" id="k-cur-act">—</div>
           </div>
+          <div class="kpi-num-item kpi-sla-inline" onclick="showOverdueModal()">
+            <div class="kpi-num-label">
+              <select id="alert-overdue-days" onchange="event.stopPropagation();renderAlerts(getFiltered())" onclick="event.stopPropagation()">
+                <option value="10" selected>10일</option>
+                <option value="15">15일</option>
+                <option value="30">30일</option>
+                <option value="60">60일</option>
+                <option value="90">90일</option>
+              </select> 초과 미해결
+            </div>
+            <div class="kpi-num-val" id="alert-overdue-n" style="font-size:22px">—</div>
+          </div>
         </div>
         <div class="kpi-bottom">
           <span class="kpi-bottom-label">처리완료율</span>
           <div class="kpi-rate-bar"><div class="kpi-rate-fill fill-soft" id="k-cur-bar" style="width:0%"></div></div>
           <span class="kpi-rate-val" id="k-cur-rate" style="color:var(--soft)">—%</span>
-        </div>
-        <div class="kpi-sla" onclick="showOverdueModal()">
-          <select id="alert-overdue-days" onchange="event.stopPropagation();renderAlerts(getFiltered())" onclick="event.stopPropagation()">
-            <option value="10" selected>10일</option>
-            <option value="15">15일</option>
-            <option value="30">30일</option>
-            <option value="60">60일</option>
-            <option value="90">90일</option>
-          </select> 초과 미해결 <b id="alert-overdue-n">—</b>건
         </div>
       </div>
       <!-- 회수금액 -->
@@ -251,6 +254,7 @@
           <div class="card-ttl-bar"></div>
           <span class="card-ttl">리스크 노출/측정판</span>
           <span class="live-badge" id="grade-live-badge">● LIVE</span>
+          <button class="info-btn" onclick="showGradeCriteriaModal()" title="등급 설정 기준">?</button>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <select id="grade-view-scope" onchange="renderMatrix(getFiltered())" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
@@ -259,6 +263,9 @@
           <select id="grade-period-mode" onchange="gradePeriodMode=this.value;recomputeGrades()" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
             <option value="연누적">연누적</option>
             <option value="당월">당월</option>
+          </select>
+          <select id="grade-ref-month" onchange="onGradeRefMonthChange()" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
+            <option value="">이번달</option>
           </select>
           <span class="card-hint" id="grade-period-label"></span>
         </div>
@@ -282,6 +289,16 @@
     </div>
 
     <!-- 감사 영역 KPI 4장 -->
+    <div class="kpi-section-hd">
+      <span class="kpi-section-ttl">감사 영역 현황</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="audit-period-mode" onchange="auditPage=1;renderAuditKPI(getFiltered())" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
+          <option value="누적">누적</option>
+          <option value="지정월">지정월</option>
+        </select>
+        <input type="month" id="audit-month-pick" onchange="auditPage=1;renderAuditKPI(getFiltered())" style="display:none;font-size:11px;padding:3px 6px;border-radius:var(--r);border:1px solid var(--border);font-family:var(--font)">
+      </div>
+    </div>
     <div class="kpi-row kpi-col" style="margin-bottom:16px">
       <div class="kpi row1">
         <div class="kpi-head"><span class="kpi-lbl">조치완료/적발</span><span class="kpi-badge kb-gray">감사 누적</span></div>
@@ -313,19 +330,21 @@
     <div class="card" style="margin-bottom:16px" id="audit-action-card">
       <div class="card-hd">
         <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">조치사항</span></div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <select id="audit-period-mode" onchange="renderAuditKPI(getFiltered())" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
-            <option value="누적">누적</option>
-            <option value="지정월">지정월</option>
-          </select>
-          <input type="month" id="audit-month-pick" onchange="renderAuditKPI(getFiltered())" style="display:none;font-size:11px;padding:3px 6px;border-radius:var(--r);border:1px solid var(--border);font-family:var(--font)">
-        </div>
       </div>
       <div class="card-bd">
+        <div class="audit-sub-ttl">징계현황</div>
         <div style="overflow-x:auto">
           <table class="tbl" style="min-width:640px">
             <thead><tr><th>날짜</th><th>법인</th><th>리스크 제목</th><th>양형</th><th>징계자명</th><th>비고</th></tr></thead>
             <tbody id="audit-action-body"></tbody>
+          </table>
+        </div>
+        <div class="pgn" id="audit-pgn"></div>
+        <div class="audit-sub-ttl" style="margin-top:16px">영역별 특이사항</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:640px">
+            <thead><tr><th>날짜</th><th>브랜드명</th><th>주요이슈</th><th>이슈상세</th><th>조치사항</th></tr></thead>
+            <tbody id="area-notes-body"></tbody>
           </table>
         </div>
       </div>
@@ -373,7 +392,7 @@
           <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">계열사별 현황</span></div>
           <span class="card-hint">카드 클릭 → 계열사뷰로 이동</span>
         </div>
-        <div class="card-bd"><div class="brand-grid" id="div-card-grid"></div></div>
+        <div class="card-bd"><div class="chart-box" style="height:280px"><canvas id="div-bar-chart"></canvas></div></div>
       </div>
       <div class="card" style="margin-bottom:0">
         <div class="card-hd">
@@ -539,6 +558,25 @@
           <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end;margin-top:4px">
             <button class="btn" onclick="resetInput()">초기화</button>
             <button class="btn btn-red" id="p-save-btn" onclick="saveInput()">저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:760px;margin:12px auto 0">
+      <div class="card-hd">
+        <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">영역별 특이사항 입력</span></div>
+      </div>
+      <div class="card-bd">
+        <div class="fgrid">
+          <div class="fg"><label class="flb">날짜</label><input type="date" class="fc" id="an-date"></div>
+          <div class="fg"><label class="flb">브랜드명 *</label><select class="fc" id="an-brand"><option value="">선택</option></select></div>
+          <div class="fg full"><label class="flb">주요이슈 *</label><input type="text" class="fc" id="an-main-issue" placeholder="주요 이슈"></div>
+          <div class="fg full"><label class="flb">이슈상세</label><textarea class="fc" id="an-issue-detail" rows="2" placeholder="이슈 상세 내용"></textarea></div>
+          <div class="fg full"><label class="flb">조치사항</label><textarea class="fc" id="an-action" rows="2" placeholder="조치 내용"></textarea></div>
+          <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end;margin-top:4px">
+            <button class="btn" onclick="resetAreaNote()">초기화</button>
+            <button class="btn btn-red" id="an-save-btn" onclick="saveAreaNote()">저장</button>
           </div>
         </div>
       </div>

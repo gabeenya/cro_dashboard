@@ -280,6 +280,8 @@ async function init(){
   document.getElementById('k-month-badge').textContent=`${now.getMonth()+1}월`;
   await loadMaster();
   await loadAll();
+  await loadAreaNotes();
+  renderAreaNotesTable();
   subscribeRealtime();   // 실시간 자동 갱신 시작
 }
 
@@ -303,6 +305,12 @@ async function loadMaster(){
   ['m-cat','p-cat'].forEach(id=>{
     allCats.forEach(x=>{document.getElementById(id).innerHTML+=`<option value="${x.id}">${x.name}</option>`;});
   });
+  // 영역별 특이사항 입력 폼의 브랜드 드롭다운 (계열사명 함께 표시)
+  const brandOptions=allBrands.map(b=>{
+    const dv=allDiv.find(d=>d.id===b.division_id);
+    return {id:b.id, name: dv?`${dv.name} - ${b.name}`:b.name};
+  });
+  fillSel('an-brand',brandOptions,'선택');
 }
 
 function fillSel(id,items,ph){
@@ -328,6 +336,7 @@ async function loadAll(){
   document.getElementById('conn-status').textContent=`데이터 ${data.length}건`;
   updateSidebarBadges();
   fillMonthFilter();
+  fillGradeRefMonth();
   buildSnapshot();
   renderCurrentPage();
 }
@@ -416,6 +425,7 @@ function onMonthFilterChange(){
 // 집계 기간: gradePeriodMode가 '당월'이면 그 달 1일~기준일, '연누적'(기본)이면 그 해 1/1~기준일.
 // 감사·재고는 등급 산정 대상에서 제외(null → gradeBadge에서 '-' 표시).
 let gradePeriodMode='연누적'; // '연누적' | '당월'
+let gradeRefMonth=null; // null=이번달 | {y,m} — 측정판 기준월 드롭다운에서 선택
 const GRADE_CAT5=['중대재해','불법파견','공정거래','영업비밀','IP'];   // 위반(위반+완료) 건수 기준
 const GRADE_EXCLUDE=['감사','재고'];                                 // 등급 산정 제외
 const BAD_DEBT_AMOUNT_LIMIT=100000000; // 부실채권 D등급 금액 기준(1억)
@@ -425,8 +435,13 @@ function gradeTier(cnt){
   if(cnt<=9) return 'C';
   return 'D';
 }
+// 측정판 기준월: 드롭다운에서 고른 달의 말일, 안 골랐으면 지금
+function getGradeCutoff(){
+  if(!gradeRefMonth) return refNow();
+  return new Date(gradeRefMonth.y, gradeRefMonth.m+1, 0, 23,59,59,999);
+}
 // 집계 기간 윈도우: gradePeriodMode에 따라 연누적(그 해 1/1~기준일) 또는 당월(그 달 1일~기준일)
-function gradeWindow(cutoff=refNow()){
+function gradeWindow(cutoff=getGradeCutoff()){
   const start = gradePeriodMode==='당월'
     ? new Date(cutoff.getFullYear(),cutoff.getMonth(),1)
     : new Date(cutoff.getFullYear(),0,1);
@@ -444,7 +459,7 @@ function calcCategoryGrade(catName, group){
   if(GRADE_CAT5.includes(catName)) return gradeTier(sumViol(group)); // 위반+완료 건수
   return null;
 }
-function computeGrade(r,all,cutoff=refNow()){
+function computeGrade(r,all,cutoff=getGradeCutoff()){
   const catName=(r.risk_categories?.name||'').trim();
   const divId=r.divisions?.id, catId=r.risk_categories?.id;
   const {start}=gradeWindow(cutoff);
@@ -580,7 +595,7 @@ function renderDash(risks){
     // 메인뷰
     document.getElementById('section-main').style.display='';
     document.getElementById('section-div').style.display='none';
-    renderDivisionCards(risks);
+    renderDivisionBarChart(risks);
     renderHighMain(risks);
   } else {
     // 계열사뷰
@@ -608,7 +623,7 @@ function renderAlerts(risks){
   _alertOverdueList=overdue;
   const oEl=document.getElementById('alert-overdue-n');
   if(oEl) oEl.textContent=overdue.length.toLocaleString();
-  const slaEl=document.querySelector('.kpi-sla');
+  const slaEl=document.querySelector('.kpi-sla-inline');
   if(slaEl) slaEl.classList.toggle('has-alert', overdue.length>0);
 }
 
@@ -647,6 +662,25 @@ function showOverdueModal(){
 }
 
 
+// 리스크 노출/측정판 상단 '?' 버튼 — 등급 산정 기준 안내
+function showGradeCriteriaModal(){
+  const html=`
+    <div class="mo-hd">
+      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">등급 설정 기준</span></div>
+      <button class="mo-cls" onclick="closeAlertModal()">×</button>
+    </div>
+    <div class="mo-bd" style="font-size:12px;line-height:1.7;color:var(--text2)">
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">영역별 등급(A/B/C/D) — 중대재해·불법파견·공정거래·영업비밀·IP</div>
+      <div style="margin-bottom:14px">위반(위반+완료 상태) 건수 기준 — <b>A</b> 3건 이하 · <b>B</b> 4~6건 · <b>C</b> 7~9건 · <b>D</b> 10건 이상</div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">영역별 등급 — 부실채권</div>
+      <div style="margin-bottom:14px">발생+해결 전체 건수 기준(위와 동일 구간). 단 '2개월 초과 미입금' 상태 중 금액이 1억 이하인 건이 하나라도 있으면 건수와 무관하게 <b>D</b></div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">감사 · 재고</div>
+      <div style="margin-bottom:14px">등급 산정 대상에서 제외( — 표시)</div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
+      <div>법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
+    </div>`;
+  showAlertModal(html);
+}
 function showAlertModal(html){
   let ov=document.getElementById('alert-ov');
   if(!ov){
@@ -898,7 +932,7 @@ function renderMatrix(risks){
     const dim=!row.overall;
     const rankHtml=dim?'—':(i<3?`<span class="rank-circle rank-${i+1}">${i+1}</span>`:`${i+1}`);
     const overallHtml=row.overall
-      ?`<div class="grade-cell"><span class="cpill cp-${row.overall}">${row.overall}</span><span class="overall-score">${row.avgScore.toFixed(1)}점</span></div>`
+      ?`<div class="grade-cell"><span class="cpill cpill-lg cp-${row.overall}">${row.overall}</span><span class="overall-score">${Math.round(row.avgScore*10)}점</span></div>`
       :`<span class="cp-none">—</span>`;
     const rowDivId=row.ent.brand?drillDivId:row.ent.id;
     const rowBrandId=row.ent.brand?row.ent.id:'';
@@ -909,15 +943,33 @@ function renderMatrix(risks){
     return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.18}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
   }).join('');
 
-  // LIVE 배지(스냅샷 조회 중이 아닐 때만) · 기간 라벨
+  // LIVE 배지(스냅샷/기준월 조회 중이 아닐 때만) · 기간 라벨
   const liveEl=document.getElementById('grade-live-badge');
-  if(liveEl) liveEl.style.display=viewMonth?'none':'';
-  const now=refNow();
+  if(liveEl) liveEl.style.display=(viewMonth||gradeRefMonth)?'none':'';
   const labelEl=document.getElementById('grade-period-label');
-  if(labelEl) labelEl.textContent=`${now.getFullYear()}년 ${now.getMonth()+1}월 ${gradePeriodMode} 기준`;
+  if(labelEl) labelEl.textContent=`${cutoff.getFullYear()}년 ${cutoff.getMonth()+1}월 ${gradePeriodMode} 기준`;
+}
+
+// 측정판 기준월 드롭다운 채우기(데이터 로드 후 1회) · 변경 시 재계산
+function fillGradeRefMonth(){
+  const el=document.getElementById('grade-ref-month'); if(!el) return;
+  const prev=el.value;
+  const opts=['<option value="">이번달</option>'];
+  monthOptionsRange().forEach(o=>{
+    opts.push(`<option value="${o.y}-${o.m}">${o.y}.${String(o.m+1).padStart(2,'0')}월</option>`);
+  });
+  el.innerHTML=opts.join('');
+  el.value=prev;
+}
+function onGradeRefMonthChange(){
+  const v=document.getElementById('grade-ref-month')?.value||'';
+  if(v){ const [y,m]=v.split('-').map(Number); gradeRefMonth={y,m}; }
+  else gradeRefMonth=null;
+  recomputeGrades();
 }
 
 // ── 감사 영역 KPI + 조치사항 판 ──────────────────
+let auditPage=1; const AUDIT_PER=5;
 function renderAuditKPI(risks){
   const mode=document.getElementById('audit-period-mode')?.value||'누적';
   const monthPick=document.getElementById('audit-month-pick');
@@ -944,11 +996,14 @@ function renderAuditKPI(risks){
   animCount('k-audit-major',major);
   animCount('k-audit-criminal',criminal);
 
-  // 조치사항 판: 감사 영역 입력값을 최근순으로 나열
+  // 조치사항 판: 감사 영역 입력값을 최근순으로 나열(5행씩 페이지)
   const tbody=document.getElementById('audit-action-body');
   if(!tbody) return;
   const sorted=sortByRecent(auditRows);
-  tbody.innerHTML=sorted.length?sorted.map(r=>`
+  const tp=Math.max(1,Math.ceil(sorted.length/AUDIT_PER));
+  if(auditPage>tp) auditPage=1;
+  const slice=sorted.slice((auditPage-1)*AUDIT_PER,auditPage*AUDIT_PER);
+  tbody.innerHTML=slice.length?slice.map(r=>`
     <tr onclick="openEdit('${r.id}')" style="cursor:pointer">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td>
@@ -957,6 +1012,58 @@ function renderAuditKPI(risks){
       <td>${escapeHTML(r.discipline_name||'-')}</td>
       <td class="td-clip">${escapeHTML(r.note||'-')}</td>
     </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+  const pgnEl=document.getElementById('audit-pgn');
+  if(pgnEl) pgnEl.innerHTML=buildPagination(auditPage,tp,page=>`auditPage=${page};renderAuditKPI(getFiltered())`);
+  renderAreaNotesTable();
+}
+
+// ── 영역별 특이사항 (데이터 입력 → 조치사항 판 하단 표시) ──────
+let allAreaNotes=[];
+async function loadAreaNotes(){
+  const {data,error}=await sb.from('area_notes').select('*').order('note_date',{ascending:false});
+  if(error){ allAreaNotes=[]; return; }
+  allAreaNotes=data||[];
+}
+function resetAreaNote(){
+  ['an-date','an-brand','an-main-issue','an-issue-detail','an-action'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+}
+async function saveAreaNote(){
+  const date=document.getElementById('an-date').value||null;
+  const brandId=document.getElementById('an-brand').value;
+  const mainIssue=document.getElementById('an-main-issue').value.trim();
+  const detail=document.getElementById('an-issue-detail').value.trim();
+  const action=document.getElementById('an-action').value.trim();
+  if(!brandId||!mainIssue){ showToast('브랜드명과 주요이슈는 필수입니다'); return; }
+  const btn=document.getElementById('an-save-btn');
+  btn.textContent='저장 중...'; btn.disabled=true;
+  const {error}=await sb.from('area_notes').insert({
+    note_date:date, brand_id:parseInt(brandId), main_issue:mainIssue,
+    issue_detail:detail||null, action_text:action||null
+  });
+  btn.textContent='저장'; btn.disabled=false;
+  if(error){ showToast('저장 실패: '+error.message); return; }
+  showToast('등록 완료!');
+  resetAreaNote();
+  await loadAreaNotes();
+  renderAreaNotesTable();
+}
+function renderAreaNotesTable(){
+  const tbody=document.getElementById('area-notes-body');
+  if(!tbody) return;
+  const sorted=[...allAreaNotes].sort((a,b)=>(b.note_date||'').localeCompare(a.note_date||''));
+  tbody.innerHTML=sorted.length?sorted.map(n=>{
+    const brand=allBrands.find(b=>b.id===n.brand_id);
+    const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
+    return `<tr>
+      <td style="white-space:nowrap">${fmtD(n.note_date)}</td>
+      <td>${escapeHTML(brand?.name||'-')}${dv?` <span style="color:var(--text3)">(${escapeHTML(dv.name)})</span>`:''}</td>
+      <td>${escapeHTML(n.main_issue||'-')}</td>
+      <td class="td-clip">${escapeHTML(n.issue_detail||'-')}</td>
+      <td class="td-clip">${escapeHTML(n.action_text||'-')}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
 }
 
 // ── 위험도별 분류 ──────────────────────────
@@ -1034,37 +1141,43 @@ function startHighRotate(wrapId){
   },40);
 }
 
-// ── 계열사 카드 (메인뷰) ──────────────────
-function renderDivisionCards(risks){
-  const g=document.getElementById('div-card-grid');
-  if(!g) return;
-  const cards=allDiv.map((div,i)=>{
-    const items=risks.filter(r=>r.divisions?.id===div.id);
-    if(!items.length) return '';
-    const 위험=sumCnt(items.filter(r=>r.grade==='D'));
-    const 주의=sumCnt(items.filter(r=>r.grade==='B'||r.grade==='C'));
-    const 안전=sumCnt(items.filter(r=>r.grade==='A'));
-    const t=sumCnt(items);
-    const viol=sumViol(items);
-    const mon=sumCnt(items);
-    const rate=mon>0?Math.round(viol/mon*100):0;
-    return `
-      <div class="bc" onclick="setDiv('${div.name}',document.getElementById('div-${div.name}'))" style="cursor:pointer;animation-delay:${i*0.05}s">
-        <div class="bc-hd"><span class="bc-name">${div.name}</span><span class="bc-total-badge">${t}건</span></div>
-        <div class="bc-stats">
-          <div class="bc-stat s-위험"><span class="bc-stat-lbl">위험</span>${위험}</div>
-          <div class="bc-stat s-주의"><span class="bc-stat-lbl">주의</span>${주의}</div>
-          <div class="bc-stat s-안전"><span class="bc-stat-lbl">안전</span>${안전}</div>
-        </div>
-        <div class="bc-bar">
-          ${위험?`<div class="bs-위험" style="flex:${위험}"></div>`:''}
-          ${주의?`<div class="bs-주의" style="flex:${주의}"></div>`:''}
-          ${안전?`<div class="bs-안전" style="flex:${안전}"></div>`:''}
-        </div>
-        ${mon>0?`<div class="bc-rate"><span>위반율</span><div class="rate-bar-wrap"><div class="rate-bar-fill" style="width:${rate}%;background:var(--위험-c)"></div></div><span class="rate-val" style="color:var(--위험-c)">${rate}%</span></div>`:''}
-      </div>`;
-  }).filter(Boolean).join('');
-  g.innerHTML=cards||'<div style="color:var(--text3);font-size:12px">데이터 없음</div>';
+// ── 계열사별 현황 (메인뷰) — 법인별 위반/모니터링 가로 막대그래프 ──
+let divBarChart=null;
+function renderDivisionBarChart(risks){
+  const canvas=document.getElementById('div-bar-chart');
+  if(!canvas) return;
+  const divs=allDiv.filter(d=>risks.some(r=>r.divisions?.id===d.id));
+  const labels=divs.map(d=>d.name);
+  const monData=divs.map(d=>sumCnt(risks.filter(r=>r.divisions?.id===d.id)));
+  const violData=divs.map(d=>sumViol(risks.filter(r=>r.divisions?.id===d.id)));
+  if(divBarChart) divBarChart.destroy();
+  if(!labels.length){
+    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
+    return;
+  }
+  divBarChart=new Chart(canvas,{
+    type:'bar',
+    data:{labels, datasets:[
+      {label:'모니터링(전체)', data:monData, backgroundColor:'#c7d2e0', borderRadius:3},
+      {label:'위반', data:violData, backgroundColor:'#c8102e', borderRadius:3}
+    ]},
+    options:{
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false,
+      animation:{duration:900,easing:'easeOutQuart'},
+      plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:10,padding:10}}},
+      onClick:(evt,elements)=>{
+        if(!elements.length) return;
+        const d=divs[elements[0].index];
+        if(d) setDiv(d.name, document.getElementById('div-'+d.name));
+      },
+      onHover:(evt,elements)=>{ evt.native.target.style.cursor=elements.length?'pointer':'default'; },
+      scales:{
+        x:{beginAtZero:true,grid:{color:'#f1f2f5'},ticks:{font:{size:10},precision:0}},
+        y:{grid:{display:false},ticks:{font:{size:11}}}
+      }
+    }
+  });
 }
 
 // ── 브랜드 카드 ────────────────────────────
@@ -1189,12 +1302,13 @@ function renderList(){
 }
 
 // 페이지네이션: 처음/끝 + 현재 주변 + 이전/다음
-function buildPagination(cur,tp){
+function buildPagination(cur,tp,onclickFn){
   if(tp<=1) return '';
+  const mkOnclick=onclickFn||(page=>`lPage=${page};renderList()`);
   const btn=(label,page,opts={})=>{
     const cls=[opts.cls||'',page===cur?'on':''].filter(Boolean).join(' ');
     const dis=opts.disabled?' disabled':'';
-    const ck=opts.disabled?'':`onclick="lPage=${page};renderList()"`;
+    const ck=opts.disabled?'':`onclick="${mkOnclick(page)}"`;
     return `<button class="${cls}"${dis} ${ck}>${label}</button>`;
   };
   const sep=()=>`<span style="padding:0 4px;color:var(--text3);font-size:11px">…</span>`;
