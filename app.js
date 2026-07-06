@@ -117,8 +117,9 @@ function flatViolationTypes(catName){
 function rowCnt(r){
   const m=r.monitoring_count, v=r.violation_count;
   if(m==null && v==null) return 1;
-  // 영업비밀의 '모니터링' 건수만 1/10 비율로 반영(위반/완료는 그대로). 외식BG 연동분 포함.
-  const mEff = r.risk_categories?.name==='영업비밀' ? Math.round((m||0)/10) : (m||0);
+  // 영업비밀의 '모니터링' 건수 중 외식BG 연동분(source_id 있음)만 1/10 비율로 반영(위반/완료는 그대로, 직접 입력분은 그대로).
+  const isSyncedTradeSecret = r.risk_categories?.name==='영업비밀' && r.source_id;
+  const mEff = isSyncedTradeSecret ? Math.round((m||0)/10) : (m||0);
   return mEff+(v||0);
 }
 // 위반 건수: 위반계열(위반/발생/적발) 또는 완료계열(완료/해결/조치완료)일 때만 반영
@@ -326,7 +327,7 @@ async function loadAll(){
   const {data,error}=await sb.from('risks').select(`
     id,registered_at,title,status,grade,note,created_at,
     item_state,violation_count,monitoring_count,store_id,violation_type,
-    discipline_type,discipline_name,sentence,amount,external_exposure,
+    discipline_type,discipline_name,sentence,amount,external_exposure,source_id,
     divisions(id,name),brands(id,name),
     risk_categories(id,name),risk_subcategories(id,name),
     stores(id,name)
@@ -450,8 +451,14 @@ function gradeWindow(cutoff=getGradeCutoff()){
     : new Date(cutoff.getFullYear(),0,1);
   return {start,cutoff};
 }
-// 카테고리명 + 해당 건수 집합만으로 등급(A~D) 계산 — division/brand 등 어떤 단위로 묶든 재사용 가능
-function calcCategoryGrade(catName, group){
+// start~cutoff가 몇 개월에 걸치는지(둘 다 같은 달이면 1). 연누적 등급을 "월평균" 기준으로 매길 때 나눗셈에 사용.
+function monthsSpan(start,cutoff){
+  return (cutoff.getFullYear()-start.getFullYear())*12 + (cutoff.getMonth()-start.getMonth()) + 1;
+}
+// 카테고리명 + 해당 건수 집합 + 집계 개월수로 등급(A~D) 계산 — division/brand 등 어떤 단위로 묶든 재사용 가능
+// 연누적 기간이 길어질수록 총 건수만으로 매기면 연말로 갈수록 등급이 무조건 나빠지므로,
+// months로 나눈 "월평균 건수"를 기준으로 매긴다(당월 모드는 months=1이라 기존과 동일).
+function calcCategoryGrade(catName, group, months=1){
   if(GRADE_EXCLUDE.includes(catName)) return null;
   if(catName==='부실채권'){
     // '2개월 초과 미입금' 금액이 1억 초과인 건이 하나라도 있으면 F, 1억 이하면 D
@@ -459,19 +466,19 @@ function calcCategoryGrade(catName, group){
     if(hasOverLimit) return 'F';
     const hasBigD=group.some(x=>x.violation_type==='2개월 초과 미입금' && (x.amount??0)<=BAD_DEBT_AMOUNT_LIMIT);
     if(hasBigD) return 'D';
-    return gradeTier(sumCnt(group)); // 발생+해결 전체 건수
+    return gradeTier(sumCnt(group)/months); // 발생+해결 전체 건수의 월평균
   }
   if(catName==='중대재해'){
     // '중대재해 발생'(산업재해 발생보다 심각한 쪽) 1건 이상이면 F
     const hasMajor=group.some(x=>x.violation_type==='중대재해 발생');
     if(hasMajor) return 'F';
-    return gradeTier(sumViol(group));
+    return gradeTier(sumViol(group)/months);
   }
   if(GRADE_COMPLIANCE.includes(catName)){
     // 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP): 외부노출 1건 이상이면 F
     const hasExternal=group.some(x=>x.external_exposure===true);
     if(hasExternal) return 'F';
-    return gradeTier(sumViol(group));
+    return gradeTier(sumViol(group)/months);
   }
   return null;
 }
@@ -485,7 +492,7 @@ function computeGrade(r,all,cutoff=getGradeCutoff()){
     const d=new Date(x.registered_at);
     return d>=start && d<=cutoff;
   });
-  return calcCategoryGrade(catName, group);
+  return calcCategoryGrade(catName, group, monthsSpan(start,cutoff));
 }
 // 등급 집계 기간(연누적/당월) 토글 변경 시 전체 재계산 후 다시 그림
 function recomputeGrades(){
@@ -702,12 +709,13 @@ function showGradeCriteriaModal(){
       <button class="mo-cls" onclick="closeAlertModal()">×</button>
     </div>
     <div class="mo-bd" style="font-size:12px;line-height:1.7;color:var(--text2)">
+      <div class="note-box" style="background:#eff6ff;border-left:3px solid #2563eb;padding:8px 12px;border-radius:6px;margin-bottom:14px">건수 기준은 <b>월평균</b>입니다. 누적 모드에서는 (연초~기준일 총 건수) ÷ (경과 개월수)로, 지정월 모드에서는 그 달 건수 그대로 계산합니다 — 연말로 갈수록 총 건수만 늘어 등급이 무조건 나빠지는 걸 막기 위함입니다.</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">컴플라이언스 분류 — 불법파견·공정거래·영업비밀·IP</div>
-      <div style="margin-bottom:14px">위반(위반+완료 상태) 건수 기준 — <b>A</b> 3건 이하 · <b>B</b> 4~6건 · <b>C</b> 7~9건 · <b>D</b> 10건 이상. 단 <b>외부노출 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
+      <div style="margin-bottom:14px">위반(위반+완료 상태) 월평균 건수 기준 — <b>A</b> 3건 이하 · <b>B</b> 4~6건 · <b>C</b> 7~9건 · <b>D</b> 10건 이상. 단 <b>외부노출 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">중대재해</div>
-      <div style="margin-bottom:14px">위반(위반+완료 상태) 건수 기준(위와 동일 구간). 단 <b>'중대재해 발생' 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
+      <div style="margin-bottom:14px">위반(위반+완료 상태) 월평균 건수 기준(위와 동일 구간). 단 <b>'중대재해 발생' 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">부실채권</div>
-      <div style="margin-bottom:14px">발생+해결 전체 건수 기준(위와 동일 구간). '2개월 초과 미입금' 금액이 <b>1억 초과</b>인 건이 있으면 <b>F</b>, <b>1억 이하</b>인 건이 있으면 <b>D</b>(건수와 무관)</div>
+      <div style="margin-bottom:14px">발생+해결 전체 월평균 건수 기준(위와 동일 구간). '2개월 초과 미입금' 금액이 <b>1억 초과</b>인 건이 있으면 <b>F</b>, <b>1억 이하</b>인 건이 있으면 <b>D</b>(건수와 무관)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">감사 · 재고</div>
       <div style="margin-bottom:14px">등급 산정 대상에서 제외( — 표시)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
@@ -938,6 +946,7 @@ function renderMatrix(risks){
   }
 
   const {start,cutoff}=gradeWindow();
+  const months=monthsSpan(start,cutoff);
   const rowsData=entities.map(ent=>{
     const cells=cats.map(cat=>{
       const items=risks.filter(r=>{
@@ -950,7 +959,7 @@ function renderMatrix(risks){
       if(!items.length) return {grade:null,num:0,den:0};
       // 분수는 항상 위반(위반+완료)/전체 건수
       const den=sumCnt(items), num=sumViol(items);
-      const grade = ent.brand ? calcCategoryGrade(cat.name, items) : (items[0].grade||null);
+      const grade = ent.brand ? calcCategoryGrade(cat.name, items, months) : (items[0].grade||null);
       return {grade, num, den};
     });
     const validCells=cells.filter(c=>c.grade);
