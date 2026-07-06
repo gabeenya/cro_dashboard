@@ -174,8 +174,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:var(--r-lg);
-  padding:24px 24px 22px;
-  min-height:180px;
+  padding:16px 18px 14px;
+  min-height:128px;
   display:flex;flex-direction:column;
   position:relative;overflow:hidden;
 }
@@ -187,7 +187,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kpi.k-주의::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--주의-c)}
 .kpi.k-안전::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--안전-c)}
 
-.kpi-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.kpi-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .kpi-lbl{font-size:13px;font-weight:700;color:var(--text);letter-spacing:0.5px;text-transform:uppercase}
 .kpi-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px}
 .kb-위험{background:var(--위험-bg);color:var(--위험-c)}
@@ -196,9 +196,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kb-gray{background:var(--surface2);color:var(--text3)}
 
 /* 수치 행 */
-.kpi-nums{display:flex;gap:16px;margin-bottom:8px}
+.kpi-nums{display:flex;gap:16px;margin-bottom:6px}
 .kpi-num-label{font-size:12px;color:var(--text2);font-weight:600;margin-bottom:4px}
-.kpi-num-val{font-size:26px;font-weight:700;letter-spacing:-0.5px;line-height:1}
+.kpi-num-val{font-size:22px;font-weight:700;letter-spacing:-0.5px;line-height:1}
 .kpi-num-val.v-total{color:var(--navy)}
 .kpi-num-val.v-위반{color:var(--soft)}
 .kpi-num-val.v-모니터{color:var(--navy2)}
@@ -209,7 +209,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kpi-num-u{font-size:11px;color:var(--text2);font-weight:500}
 
 /* 하단 지표 */
-.kpi-bottom{display:flex;align-items:center;gap:8px;padding-top:8px;border-top:1px solid var(--border)}
+.kpi-bottom{display:flex;align-items:center;gap:8px;padding-top:6px;border-top:1px solid var(--border)}
 .kpi-bottom-label{font-size:12px;color:var(--text2);font-weight:600}
 .kpi-rate-val{font-size:14px;font-weight:700}
 .kpi-rate-bar{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
@@ -222,11 +222,22 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .fill-green{background:#059669}
 .fill-soft{background:var(--soft)}
 .kpi-sla-inline{cursor:pointer}
-.kpi-sla-inline .kpi-num-label{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
-.kpi-sla-inline select{font-size:10.5px;padding:1px 2px;font-family:var(--font)}
 .kpi-sla-inline:hover .kpi-num-label{color:var(--text)}
 .kpi-sla-inline .kpi-num-val{color:var(--text3)}
 .kpi-sla-inline.has-alert .kpi-num-val{color:#ea580c}
+.sla-popover{
+  display:none;position:fixed;z-index:9999;background:var(--surface);
+  border:1px solid var(--border2);border-radius:var(--r-lg);box-shadow:0 8px 24px rgba(0,0,0,0.16);
+  padding:10px;min-width:360px;max-width:520px;font-size:11px;
+}
+.sla-popover.open{display:block}
+.sla-pop-empty{padding:6px;color:var(--text3)}
+.sla-pop-hd{font-weight:700;color:var(--text);margin-bottom:8px;color:#ea580c}
+.sla-pop-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.sla-pop-tbl th{text-align:left;padding:5px 6px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border);font-size:10px}
+.sla-pop-tbl td{padding:5px 6px;border-bottom:1px solid var(--bg);cursor:pointer}
+.sla-pop-tbl tr:last-child td{border-bottom:none}
+.sla-pop-tbl tr:hover td{background:var(--surface2)}
 
 /* ════ 카드 ════ */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);margin-bottom:12px;overflow:hidden}
@@ -244,10 +255,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 /* ════ 대시보드 카드 진입 애니메이션 (아래에서 떠오르며 순차 등장) ════ */
 @keyframes cardRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 /* KPI 카드: 렌더(첫 로드+새로고침)마다 재생 — JS가 #page-dashboard에 .anim-in 토글 */
-#page-dashboard.anim-in .kpi{animation:cardRise .5s ease both}
-#page-dashboard.anim-in .kpi-col .kpi:nth-child(2){animation-delay:.07s}
-#page-dashboard.anim-in .kpi-col .kpi:nth-child(3){animation-delay:.14s}
-#page-dashboard.anim-in .kpi-col .kpi:nth-child(4){animation-delay:.20s}
+#page-dashboard.anim-in .kpi{animation:cardRise .4s ease both}
+#page-dashboard.anim-in .kpi-col .kpi:nth-child(2){animation-delay:.04s}
+#page-dashboard.anim-in .kpi-col .kpi:nth-child(3){animation-delay:.08s}
+#page-dashboard.anim-in .kpi-col .kpi:nth-child(4){animation-delay:.12s}
 /* 차트 카드(내부 차트는 매 렌더 자체 애니메이션) + 계열사/브랜드 타일(매 렌더 새로 생성)은 생성 시 자동 재생 */
 #page-dashboard .chart-row>.card,
 #page-dashboard .two-col>.card,
@@ -288,10 +299,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   overflow:hidden;text-overflow:ellipsis;
 }
 .mx th.rh{text-align:left;padding-left:12px}
-.mx th:nth-child(1){width:52px;text-align:center}
-.mx th:nth-child(2){width:130px}
-.mx th:nth-child(3){width:120px}
-.mx td{padding:12px 5px;text-align:center;border-bottom:1px solid var(--bg)}
+.mx td{padding:12px 5px;text-align:center;border-bottom:1px solid var(--bg);line-height:1.6}
 .mx td.name-col{text-align:left;font-weight:700;font-size:12px;padding-left:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mx tr:last-child td{border-bottom:none}
 .mx tbody tr:hover td{background:var(--surface2)}
@@ -308,6 +316,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .cp-none{color:var(--text3);font-size:10px}
 
 /* ════ 리스크 노출/측정판 ════ */
+.head-my-center {text-align: center;}
 .live-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:2px 8px;animation:livePulse 1.6s ease-in-out infinite}
 .info-btn{width:18px;height:18px;border-radius:50%;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1}
 .info-btn:hover{background:var(--border);color:var(--text)}
@@ -320,20 +329,22 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .rank-2{background:#8a97a8}
 .rank-3{background:#c9702b}
 .mx td.overall-col{text-align:center}
-.grade-cell{text-align:center;width:100%}
-.grade-cell .cpill{display:inline-block}
-.overall-score{display:block;width:fit-content;margin:4px auto 0;font-size:13px;color:#2563eb;font-weight:800}
-.cpill-lg{font-size:14px;padding:5px 14px;border-radius:7px}
-.grade-cell .gc-frac{display:block;width:fit-content;margin:2px auto 0;font-size:10px;color:var(--text3)}
+.overall-score{font-size:11px;color:#2563eb;font-weight:800}
+.cpill-lg{font-size:12px;padding:4px 11px;border-radius:6px}
+.gc-frac{font-size:10px;color:var(--text3)}
 .mx tr.mx-row-dim{opacity:0.4}
 /* 새로고침·필터 변경 시 행이 위에서 아래로 순차 등장 (실시간 갱신 느낌) */
-@keyframes mxRowIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-.mx tr.mx-row-in{animation:mxRowIn 0.7s ease both}
+@keyframes mxRowIn{
+  0%{opacity:0; transform:perspective(700px) rotateX(-85deg);}
+  100%{opacity:1; transform:perspective(700px) rotateX(0deg);}
+}
+.mx tbody{perspective:700px}
+.mx tr.mx-row-in{animation:mxRowIn 1.4s cubic-bezier(.22,.7,.25,1) both; transform-origin:top center}
 
 /* ════ 테이블 ════ */
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl thead tr{border-bottom:2px solid var(--border)}
-.tbl th{text-align:left;padding:9px 10px;font-weight:700;color:var(--text2);font-size:10px;background:var(--surface2);white-space:nowrap;letter-spacing:0.3px}
+.tbl th{padding:9px 10px;font-weight:700;color:var(--text2);font-size:10px;background:var(--surface2);white-space:nowrap;letter-spacing:0.3px}
 .tbl td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover td{background:#fafbfc;cursor:pointer}
@@ -419,6 +430,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .fc:focus{border-color:var(--red);box-shadow:0 0 0 2px rgba(200,16,46,0.08)}
 select.fc{cursor:pointer}
 textarea.fc{resize:vertical;min-height:68px}
+.chk-inline{display:flex;align-items:center;gap:6px;height:38px;font-size:12.5px;color:var(--text);cursor:pointer}
+.chk-inline input{width:15px;height:15px;cursor:pointer}
 .fc-state{
   display:flex;gap:6px;
 }

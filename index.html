@@ -208,16 +208,8 @@
             <div class="kpi-num-label">조치중</div>
             <div class="kpi-num-val v-조치" id="k-cur-act">—</div>
           </div>
-          <div class="kpi-num-item kpi-sla-inline" onclick="showOverdueModal()">
-            <div class="kpi-num-label">
-              <select id="alert-overdue-days" onchange="event.stopPropagation();renderAlerts(getFiltered())" onclick="event.stopPropagation()">
-                <option value="10" selected>10일</option>
-                <option value="15">15일</option>
-                <option value="30">30일</option>
-                <option value="60">60일</option>
-                <option value="90">90일</option>
-              </select> 초과 미해결
-            </div>
+          <div class="kpi-num-item kpi-sla-inline" id="sla-trigger" onmouseenter="showSlaPopover()" onmouseleave="hideSlaPopover()">
+            <div class="kpi-num-label">14일 초과</div>
             <div class="kpi-num-val" id="alert-overdue-n" style="font-size:22px">—</div>
           </div>
         </div>
@@ -281,6 +273,7 @@
         </div>
         <div style="overflow-x:auto">
           <table class="tbl mx" id="grade-mx-table" style="min-width:720px">
+            <colgroup id="grade-mx-colgroup"></colgroup>
             <thead id="grade-mx-head"></thead>
             <tbody id="grade-mx-body"></tbody>
           </table>
@@ -289,8 +282,7 @@
     </div>
 
     <!-- 감사 영역 KPI 4장 -->
-    <div class="kpi-section-hd">
-      <span class="kpi-section-ttl">감사 영역 현황</span>
+    <div class="kpi-section-hd" style="justify-content:flex-end">
       <div style="display:flex;align-items:center;gap:8px">
         <select id="audit-period-mode" onchange="auditPage=1;renderAuditKPI(getFiltered())" style="font-size:11px;padding:4px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);font-family:var(--font);color:var(--text);cursor:pointer">
           <option value="누적">누적</option>
@@ -554,6 +546,9 @@
           </div>
           <div class="fg audit-field-p hidden-fg"><label class="flb">징계자명 *</label><input type="text" class="fc" id="p-discipline-name" placeholder="이름"></div>
           <div class="fg audit-field-p hidden-fg"><label class="flb">양형 *</label><input type="text" class="fc" id="p-sentence" placeholder="예: 정직 3개월"></div>
+          <div class="fg"><label class="flb">외부노출 여부</label>
+            <label class="chk-inline"><input type="checkbox" id="p-external"> 외부에 노출됨</label>
+          </div>
           <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="p-note" placeholder="추가 메모"></textarea></div>
           <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end;margin-top:4px">
             <button class="btn" onclick="resetInput()">초기화</button>
@@ -743,6 +738,9 @@
         </div>
         <div class="fg audit-field-m hidden-fg"><label class="flb">징계자명 *</label><input type="text" class="fc" id="m-discipline-name" placeholder="이름"></div>
         <div class="fg audit-field-m hidden-fg"><label class="flb">양형 *</label><input type="text" class="fc" id="m-sentence" placeholder="예: 정직 3개월"></div>
+        <div class="fg"><label class="flb">외부노출 여부</label>
+          <label class="chk-inline"><input type="checkbox" id="m-external"> 외부에 노출됨</label>
+        </div>
         <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="m-note" placeholder="추가 메모"></textarea></div>
       </div>
     </div>

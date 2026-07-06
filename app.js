@@ -324,7 +324,7 @@ async function loadAll(){
   const {data,error}=await sb.from('risks').select(`
     id,registered_at,title,status,grade,note,created_at,
     item_state,violation_count,monitoring_count,store_id,violation_type,
-    discipline_type,discipline_name,sentence,amount,
+    discipline_type,discipline_name,sentence,amount,external_exposure,
     divisions(id,name),brands(id,name),
     risk_categories(id,name),risk_subcategories(id,name),
     stores(id,name)
@@ -427,8 +427,9 @@ function onMonthFilterChange(){
 let gradePeriodMode='연누적'; // '연누적' | '당월'
 let gradeRefMonth=null; // null=이번달 | {y,m} — 측정판 기준월 드롭다운에서 선택
 const GRADE_CAT5=['중대재해','불법파견','공정거래','영업비밀','IP'];   // 위반(위반+완료) 건수 기준
+const GRADE_COMPLIANCE=['불법파견','공정거래','영업비밀','IP'];       // "컴플라이언스 분류" — 외부노출 1건 이상이면 F
 const GRADE_EXCLUDE=['감사','재고'];                                 // 등급 산정 제외
-const BAD_DEBT_AMOUNT_LIMIT=100000000; // 부실채권 D등급 금액 기준(1억)
+const BAD_DEBT_AMOUNT_LIMIT=100000000; // 부실채권 D등급 금액 기준(1억, 초과가 아니라 이하일 때 D)
 function gradeTier(cnt){
   if(cnt<=3) return 'A';
   if(cnt<=6) return 'B';
@@ -451,12 +452,25 @@ function gradeWindow(cutoff=getGradeCutoff()){
 function calcCategoryGrade(catName, group){
   if(GRADE_EXCLUDE.includes(catName)) return null;
   if(catName==='부실채권'){
-    // '2개월 초과 미입금' 중 금액이 1억 이하인 건이 하나라도 있으면 D
+    // '2개월 초과 미입금' 금액이 1억 초과인 건이 하나라도 있으면 F, 1억 이하면 D
+    const hasOverLimit=group.some(x=>x.violation_type==='2개월 초과 미입금' && (x.amount??0)>BAD_DEBT_AMOUNT_LIMIT);
+    if(hasOverLimit) return 'F';
     const hasBigD=group.some(x=>x.violation_type==='2개월 초과 미입금' && (x.amount??0)<=BAD_DEBT_AMOUNT_LIMIT);
     if(hasBigD) return 'D';
     return gradeTier(sumCnt(group)); // 발생+해결 전체 건수
   }
-  if(GRADE_CAT5.includes(catName)) return gradeTier(sumViol(group)); // 위반+완료 건수
+  if(catName==='중대재해'){
+    // '중대재해 발생'(산업재해 발생보다 심각한 쪽) 1건 이상이면 F
+    const hasMajor=group.some(x=>x.violation_type==='중대재해 발생');
+    if(hasMajor) return 'F';
+    return gradeTier(sumViol(group));
+  }
+  if(GRADE_COMPLIANCE.includes(catName)){
+    // 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP): 외부노출 1건 이상이면 F
+    const hasExternal=group.some(x=>x.external_exposure===true);
+    if(hasExternal) return 'F';
+    return gradeTier(sumViol(group));
+  }
   return null;
 }
 function computeGrade(r,all,cutoff=getGradeCutoff()){
@@ -606,15 +620,14 @@ function renderDash(risks){
   }
 }
 
-// ── 알림 (장기 미해결 + 이상 급증) ────────────────────────
-let _alertOverdueList=[], _alertOverdueDays=3;
+// ── 알림 (장기 미해결) ────────────────────────
+let _alertOverdueList=[];
+const SLA_OVERDUE_DAYS=14;
 
-// 장기 미해결: 등록 후 N일(기준일) 이상 '위반' 상태인 건만. '모니터링'은 제외(완료할 것 없음).
-// 조치중 KPI 카드의 SLA 라인에 노출됨(showOverdueModal).
+// 장기 미해결: 등록 후 14일 이상 '위반' 상태인 건만. '모니터링'은 제외(완료할 것 없음).
+// 조치중 KPI 카드의 SLA 항목에 노출되고, 마우스오버 시 상세 팝오버(showSlaPopover)로 보여줌.
 function renderAlerts(risks){
-  const days=parseInt(document.getElementById('alert-overdue-days')?.value||'10');
-  _alertOverdueDays=days;
-  const cutoff=refNow(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-days);
+  const cutoff=refNow(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-SLA_OVERDUE_DAYS);
   const overdue=risks.filter(r=>{
     if(!r.registered_at) return false;
     if(r.item_state!=='위반') return false;
@@ -627,38 +640,47 @@ function renderAlerts(risks){
   if(slaEl) slaEl.classList.toggle('has-alert', overdue.length>0);
 }
 
-function showOverdueModal(){
+// 조치중 카드의 'N일 초과' 항목에 마우스를 올리면 상세 목록을 팝오버로 보여줌(body에 fixed로 붙여 카드의 overflow:hidden에 잘리지 않게 함)
+function showSlaPopover(){
+  const trigger=document.getElementById('sla-trigger');
+  if(!trigger) return;
+  let pop=document.getElementById('sla-popover');
+  if(!pop){
+    pop=document.createElement('div');
+    pop.id='sla-popover';
+    pop.className='sla-popover';
+    document.body.appendChild(pop);
+  }
   const list=_alertOverdueList;
-  const days=_alertOverdueDays;
-  if(!list.length){ showToast(`${days}일 이상 미해결 건이 없습니다`); return; }
-  const html=`
-    <div class="mo-hd">
-      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">⏰ 장기 미해결 (${days}일↑)</span></div>
-      <button class="mo-cls" onclick="closeAlertModal()">×</button>
-    </div>
-    <div class="mo-bd">
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">등록 후 ${days}일 이상 지났지만 아직 '완료' 처리되지 않은 항목 <b style="color:#ea580c">${list.length}건</b></div>
-      <div style="overflow-x:auto">
-      <table class="tbl" style="min-width:600px">
-        <thead><tr><th>경과</th><th>등록일</th><th>계열사</th><th>브랜드</th><th>리스크명</th><th>상태</th><th>등급</th></tr></thead>
+  if(!list.length){
+    pop.innerHTML=`<div class="sla-pop-empty">${SLA_OVERDUE_DAYS}일 이상 미해결 건이 없습니다</div>`;
+  } else {
+    pop.innerHTML=`
+      <div class="sla-pop-hd">${SLA_OVERDUE_DAYS}일 이상 위반(처리중) — ${list.length}레코드 · ${sumCnt(list)}건</div>
+      <table class="sla-pop-tbl">
+        <thead><tr><th>발생일</th><th>경과</th><th>영역/상세</th><th>브랜드</th><th>건수</th></tr></thead>
         <tbody>
           ${list.map(r=>{
             const elapsed=Math.floor((Date.now()-new Date(r.registered_at).getTime())/86400000);
-            return `<tr onclick="closeAlertModal();openEdit('${r.id}')">
-              <td style="font-weight:700;color:#ea580c;white-space:nowrap">${elapsed}일</td>
+            return `<tr onclick="hideSlaPopover();openEdit('${r.id}')">
               <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
-              <td>${r.divisions?.name||'-'}</td>
+              <td style="color:#ea580c;font-weight:700">${elapsed}일</td>
+              <td>${r.risk_categories?.name||'-'}${r.risk_subcategories?.name?' / '+r.risk_subcategories.name:''}</td>
               <td>${r.brands?.name||'-'}</td>
-              <td>${r.title||'-'}</td>
-              <td>${stateBadge(r.item_state)}</td>
-              <td>${gradeBadge(r.grade)}</td>
+              <td style="text-align:center">${rowCnt(r)}</td>
             </tr>`;
           }).join('')}
         </tbody>
-      </table>
-      </div>
-    </div>`;
-  showAlertModal(html);
+      </table>`;
+  }
+  const rect=trigger.getBoundingClientRect();
+  pop.style.left=Math.round(rect.left)+'px';
+  pop.style.top=Math.round(rect.bottom+6)+'px';
+  pop.classList.add('open');
+}
+function hideSlaPopover(){
+  const pop=document.getElementById('sla-popover');
+  if(pop) pop.classList.remove('open');
 }
 
 
@@ -670,14 +692,16 @@ function showGradeCriteriaModal(){
       <button class="mo-cls" onclick="closeAlertModal()">×</button>
     </div>
     <div class="mo-bd" style="font-size:12px;line-height:1.7;color:var(--text2)">
-      <div style="font-weight:700;color:var(--text);margin-bottom:6px">영역별 등급(A/B/C/D) — 중대재해·불법파견·공정거래·영업비밀·IP</div>
-      <div style="margin-bottom:14px">위반(위반+완료 상태) 건수 기준 — <b>A</b> 3건 이하 · <b>B</b> 4~6건 · <b>C</b> 7~9건 · <b>D</b> 10건 이상</div>
-      <div style="font-weight:700;color:var(--text);margin-bottom:6px">영역별 등급 — 부실채권</div>
-      <div style="margin-bottom:14px">발생+해결 전체 건수 기준(위와 동일 구간). 단 '2개월 초과 미입금' 상태 중 금액이 1억 이하인 건이 하나라도 있으면 건수와 무관하게 <b>D</b></div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">컴플라이언스 분류 — 불법파견·공정거래·영업비밀·IP</div>
+      <div style="margin-bottom:14px">위반(위반+완료 상태) 건수 기준 — <b>A</b> 3건 이하 · <b>B</b> 4~6건 · <b>C</b> 7~9건 · <b>D</b> 10건 이상. 단 <b>외부노출 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">중대재해</div>
+      <div style="margin-bottom:14px">위반(위반+완료 상태) 건수 기준(위와 동일 구간). 단 <b>'중대재해 발생' 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">부실채권</div>
+      <div style="margin-bottom:14px">발생+해결 전체 건수 기준(위와 동일 구간). '2개월 초과 미입금' 금액이 <b>1억 초과</b>인 건이 있으면 <b>F</b>, <b>1억 이하</b>인 건이 있으면 <b>D</b>(건수와 무관)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">감사 · 재고</div>
       <div style="margin-bottom:14px">등급 산정 대상에서 제외( — 표시)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
-      <div>법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
+      <div>법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점, F=0점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
     </div>`;
   showAlertModal(html);
 }
@@ -873,7 +897,7 @@ function renderDonut(risks){
 // 감사·재고는 등급 산정 대상이 아니라 열에서 제외.
 // 종합등급: 영역별 등급을 A=10/B=8/C=5/D=3점으로 환산한 평균 점수로 산정.
 //   평균 9~10=A, 7~8=B, 5~6=C, 3~4=D, 3 미만=F
-const GRADE_POINT={A:10,B:8,C:5,D:3};
+const GRADE_POINT={A:10,B:8,C:5,D:3,F:0};
 function scoreToOverallGrade(avg){
   if(avg>=9) return 'A';
   if(avg>=7) return 'B';
@@ -897,7 +921,12 @@ function renderMatrix(risks){
     entityLabel='계열사';
   }
 
-  head.innerHTML=`<tr><th class="rh">순위</th><th class="rh">${entityLabel}</th><th>종합등급</th>${cats.map(c=>`<th>${c.name}</th>`).join('')}</tr>`;
+  head.innerHTML=`<tr><th class="rh">순위</th><th class="rh">${entityLabel}</th><th>종합등급</th>${cats.map(c=>`<th class="head-my-center">${c.name}</th>`).join('')}</tr>`;
+  // colgroup으로 열 폭을 명시적으로 고정 — thead/tbody가 항상 같은 폭을 쓰도록 보장
+  const colgroupEl=document.getElementById('grade-mx-colgroup');
+  if(colgroupEl){
+    colgroupEl.innerHTML=`<col style="width:52px"><col style="width:120px"><col style="width:90px">${cats.map(()=>'<col>').join('')}`;
+  }
 
   const {start,cutoff}=gradeWindow();
   const rowsData=entities.map(ent=>{
@@ -932,15 +961,15 @@ function renderMatrix(risks){
     const dim=!row.overall;
     const rankHtml=dim?'—':(i<3?`<span class="rank-circle rank-${i+1}">${i+1}</span>`:`${i+1}`);
     const overallHtml=row.overall
-      ?`<div class="grade-cell"><span class="cpill cpill-lg cp-${row.overall}">${row.overall}</span><span class="overall-score">${Math.round(row.avgScore*10)}점</span></div>`
+      ?`<span class="cpill cpill-lg cp-${row.overall}">${row.overall}</span><br><span class="overall-score">${Math.round(row.avgScore*10)}점</span>`
       :`<span class="cp-none">—</span>`;
     const rowDivId=row.ent.brand?drillDivId:row.ent.id;
     const rowBrandId=row.ent.brand?row.ent.id:'';
     const cellsHtml=row.cells.map((c,ci)=>{
       if(!c.grade) return `<td><span class="cp-none">—</span></td>`;
-      return `<td><div class="grade-cell"><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><span class="gc-frac">${c.num}/${c.den}</span></div></td>`;
+      return `<td><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><br><span class="gc-frac">${c.num}/${c.den}</span></td>`;
     }).join('');
-    return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.18}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
+    return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.45}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
   }).join('');
 
   // LIVE 배지(스냅샷/기준월 조회 중이 아닐 때만) · 기간 라벨
@@ -1052,7 +1081,19 @@ async function saveAreaNote(){
 function renderAreaNotesTable(){
   const tbody=document.getElementById('area-notes-body');
   if(!tbody) return;
-  const sorted=[...allAreaNotes].sort((a,b)=>(b.note_date||'').localeCompare(a.note_date||''));
+  // 감사 KPI 카드와 동일한 누적/지정월 기간 설정을 공유
+  const mode=document.getElementById('audit-period-mode')?.value||'누적';
+  const monthPick=document.getElementById('audit-month-pick');
+  let notes=allAreaNotes;
+  if(mode==='지정월' && monthPick?.value){
+    const [y,m]=monthPick.value.split('-').map(Number);
+    notes=notes.filter(n=>{
+      if(!n.note_date) return false;
+      const d=new Date(n.note_date);
+      return d.getFullYear()===y && d.getMonth()===(m-1);
+    });
+  }
+  const sorted=[...notes].sort((a,b)=>(b.note_date||'').localeCompare(a.note_date||''));
   tbody.innerHTML=sorted.length?sorted.map(n=>{
     const brand=allBrands.find(b=>b.id===n.brand_id);
     const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
@@ -1720,6 +1761,8 @@ function resetInput(){
   // 부실채권 금액 필드 초기화
   const pAmt=document.getElementById('p-amount'); if(pAmt) pAmt.value='';
   document.querySelectorAll('.amount-field-p').forEach(el=>el.classList.add('hidden-fg'));
+  // 외부노출 여부 초기화
+  const pExt=document.getElementById('p-external'); if(pExt) pExt.checked=false;
   // 상태 초기화 (기본 3버튼 복원)
   document.getElementById('p-state').value='';
   renderStateButtons('p','');
@@ -1743,6 +1786,7 @@ async function saveInput(){
   const disciplineName=document.getElementById('p-discipline-name')?.value.trim()||null;
   const sentence=document.getElementById('p-sentence')?.value.trim()||null;
   const amountStr=document.getElementById('p-amount')?.value ?? '';
+  const externalExposure=document.getElementById('p-external')?.checked||false;
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
   if(vtElP && vtElP.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const catNameP=(allCats.find(c=>c.id==catId)||{}).name||'';
@@ -1763,7 +1807,7 @@ async function saveInput(){
     monitoring_count:state==='모니터링'?cntVal:null,
     violation_type:violationType||null,
     discipline_type:disciplineType,discipline_name:disciplineName,sentence,
-    amount
+    amount, external_exposure:externalExposure
   });
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -2267,6 +2311,9 @@ function buildInlineEditRow(r){
       <div class="fg"><label class="flb">징계자명 *</label><input type="text" class="fc" id="ie-discipline-name" value="${escapeHTML(r.discipline_name||'')}" placeholder="이름"></div>
       <div class="fg"><label class="flb">양형 *</label><input type="text" class="fc" id="ie-sentence" value="${escapeHTML(r.sentence||'')}" placeholder="예: 정직 3개월"></div>
       `:''}
+      <div class="fg"><label class="flb">외부노출 여부</label>
+        <label class="chk-inline"><input type="checkbox" id="ie-external" ${r.external_exposure?'checked':''}> 외부에 노출됨</label>
+      </div>
       <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="ie-note">${escapeHTML(r.note||'')}</textarea></div>
       <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">
         <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="deleteInline('${r.id}')">삭제</button>
@@ -2338,6 +2385,7 @@ async function saveInline(id){
   const disciplineName=document.getElementById('ie-discipline-name')?.value.trim()||null;
   const ieSentence=document.getElementById('ie-sentence')?.value.trim()||null;
   const amountStrIE=document.getElementById('ie-amount')?.value ?? '';
+  const externalExposureIE=document.getElementById('ie-external')?.checked||false;
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElIE && vtElIE.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const catNameIE=(allCats.find(c=>c.id==catId)||{}).name||'';
@@ -2358,7 +2406,7 @@ async function saveInline(id){
     monitoring_count:state==='모니터링'?cntVal:null,
     violation_type:violationType||null,
     discipline_type:disciplineType,discipline_name:disciplineName,sentence:ieSentence,
-    amount:amountIE
+    amount:amountIE, external_exposure:externalExposureIE
   }).eq('id',id);
   if(error){
     if(btn){btn.textContent='저장'; btn.disabled=false;}
@@ -2409,6 +2457,7 @@ function openEdit(id){
   const mdt=document.getElementById('m-discipline-type'); if(mdt) mdt.value=r.discipline_type||'';
   const mdn=document.getElementById('m-discipline-name'); if(mdn) mdn.value=r.discipline_name||'';
   const mst=document.getElementById('m-sentence'); if(mst) mst.value=r.sentence||'';
+  const mExt=document.getElementById('m-external'); if(mExt) mExt.checked=!!r.external_exposure;
   document.getElementById('m-note').value=r.note||'';
   document.getElementById('m-cnt').value=(r.monitoring_count??r.violation_count??'');
   if(r.item_state) selectState('m',r.item_state);
@@ -2462,6 +2511,7 @@ async function saveModal(){
   const disciplineName=document.getElementById('m-discipline-name')?.value.trim()||null;
   const mSentence=document.getElementById('m-sentence')?.value.trim()||null;
   const amountStrM=document.getElementById('m-amount')?.value ?? '';
+  const externalExposureM=document.getElementById('m-external')?.checked||false;
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElM && vtElM.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const catNameM=(allCats.find(c=>c.id==catId)||{}).name||'';
@@ -2482,7 +2532,7 @@ async function saveModal(){
     monitoring_count:state==='모니터링'?cntVal:null,
     violation_type:violationType||null,
     discipline_type:disciplineType,discipline_name:disciplineName,sentence:mSentence,
-    amount:amountM
+    amount:amountM, external_exposure:externalExposureM
   }).eq('id',editId);
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -3054,5 +3104,27 @@ function startLiveTicker(){
   },10000);
 }
 
+// 차트(추이·도넛·계열사 막대)가 스크롤로 다시 화면에 들어올 때마다 애니메이션이 재생되도록.
+// 캔버스 엘리먼트 자체는 렌더마다 재사용되므로(Chart.js가 destroy 후 같은 캔버스에 다시 그림) 한 번만 관찰 등록하면 됨.
+function setupChartReplayObserver(){
+  const targets=[
+    {id:'trend-chart', fn:()=>renderTrend(getFiltered())},
+    {id:'donut-chart', fn:()=>renderDonut(getFiltered())},
+    {id:'div-bar-chart', fn:()=>renderDivisionBarChart(getFiltered())}
+  ];
+  const observer=new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(!entry.isIntersecting || currentPage!=='dashboard') return;
+      const match=targets.find(t=>t.id===entry.target.id);
+      if(match) match.fn();
+    });
+  },{threshold:0.4});
+  targets.forEach(t=>{
+    const el=document.getElementById(t.id);
+    if(el) observer.observe(el);
+  });
+}
+
 init();
+setupChartReplayObserver();
 startLiveTicker();
