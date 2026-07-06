@@ -957,8 +957,8 @@ function renderMatrix(risks){
         return d>=start && d<=cutoff;
       });
       if(!items.length) return {grade:null,num:0,den:0};
-      // 분수는 항상 위반(위반+완료)/전체 건수
-      const den=sumCnt(items), num=sumViol(items);
+      // 분수는 위반(위반+완료)/전체 건수의 월평균(등급 산정 기준과 일치시킴). 당월 모드는 months=1이라 원래 건수 그대로.
+      const den=Math.round(sumCnt(items)/months), num=Math.round(sumViol(items)/months);
       const grade = ent.brand ? calcCategoryGrade(cat.name, items, months) : (items[0].grade||null);
       return {grade, num, den};
     });
