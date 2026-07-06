@@ -129,6 +129,20 @@ function rowViol(r){
 }
 const sumCnt =arr=>arr.reduce((s,r)=>s+rowCnt(r),0);   // 전체(모니터링) 건수 합
 const sumViol=arr=>arr.reduce((s,r)=>s+rowViol(r),0);  // 위반 건수 합
+// 비율(%) 계산: 반올림 때문에 99.x%가 100%로 보이지 않도록, 분자==분모(진짜 100%)가 아니면 99%를 상한으로 둔다.
+function pctRate(num,den){
+  if(den<=0) return 0;
+  const r=Math.round(num/den*100);
+  return (r>=100 && num<den) ? 99 : r;
+}
+// 반올림 없이 소수점까지 그대로 보여주는 비율(내림 처리라 실제 값보다 커 보이는 일이 없음)
+function pctRateExact(num,den,decimals=1){
+  if(den<=0) return '0';
+  if(num>=den) return (100).toFixed(decimals);
+  const factor=Math.pow(10,decimals);
+  const truncated=Math.floor(num/den*100*factor)/factor;
+  return truncated.toFixed(decimals);
+}
 
 // ── 인증 게이트 ────────────────────────────
 // 미로그인/미승인 시 login.html로 보냄. 통과 시 currentUser 세팅.
@@ -768,7 +782,7 @@ function renderKPI(risks){
   const badDebtRisks=risks.filter(r=>r.risk_categories?.name==='부실채권' && r.amount);
   const occurredAmt=badDebtRisks.reduce((s,r)=>s+(r.amount||0),0);
   const recovery=badDebtRisks.filter(r=>r.item_state==='해결').reduce((s,r)=>s+(r.amount||0),0);
-  const recoveryRate=occurredAmt>0?Math.round(recovery/occurredAmt*100):0;
+  const recoveryRate=pctRateExact(recovery,occurredAmt); // 문자열(소수점 1자리, 내림)
 
   // 감사·부실채권은 위반/모니터링/조치중 KPI에 반영하지 않음
   risks=risks.filter(r=>r.risk_categories?.name!=='감사' && r.risk_categories?.name!=='부실채권');
@@ -776,7 +790,7 @@ function renderKPI(risks){
   // 누적: 위반(위반+완료) / 모니터링(전체) — 입력 건수 합계 기준
   const accViol=sumViol(risks);
   const accMon=sumCnt(risks);
-  const accRate=accMon>0?Math.round(accViol/accMon*100):0;
+  const accRate=pctRate(accViol,accMon);
 
   // 당월
   const thisMonth=risks.filter(r=>{
@@ -786,13 +800,13 @@ function renderKPI(risks){
   });
   const monViol=sumViol(thisMonth);
   const monMon=sumCnt(thisMonth);
-  const monRate=monMon>0?Math.round(monViol/monMon*100):0;
+  const monRate=pctRate(monViol,monMon);
 
   // 현재: 조치중(위반계열) + 처리완료율(완료계열/(위반+완료))
   const curAct=sumViol(risks.filter(r=>isViolState(r.item_state)));
   const curDone=sumViol(risks.filter(r=>isDoneState(r.item_state)));
   const curTotal=curAct+curDone;
-  const curRate=curTotal>0?Math.round(curDone/curTotal*100):0;
+  const curRate=pctRate(curDone,curTotal);
 
   // 누적
   animCount('k-acc-viol',accViol); animCount('k-acc-mon',accMon);
