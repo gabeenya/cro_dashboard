@@ -515,9 +515,9 @@ function setDiv(name,el){
   const brands=name?allBrands.filter(b=>b.division_id===dObj?.id):allBrands;
   fillSel('f-brand',brands,'전체 브랜드/조직');
   document.getElementById('f-brand').value='';
-  // 측정판의 계열사/브랜드 전환 드롭다운은 사이드바 이동 시 항상 초기화(전체 계열사별로 복귀)
+  // 측정판의 계열사/브랜드 전환 드롭다운: 계열사뷰로 들어가면 그 계열사의 브랜드 기준으로, 전사뷰면 전체(계열사별)로
   const scopeSel=document.getElementById('grade-view-scope');
-  if(scopeSel) scopeSel.value='';
+  if(scopeSel) scopeSel.value=name?(dObj?.id||''):'';
   // 대시보드로 전환
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
   document.getElementById('page-dashboard').classList.add('on');
@@ -596,6 +596,13 @@ function updateFbarSelects(){
   }
 }
 function applyFilter(){renderDash(getFiltered());}
+// 메인뷰 상단 필터바의 '계열사' 드롭다운 — 선택 시 측정판도 그 계열사의 브랜드 기준으로 자동 전환
+function onFDivChange(){
+  const divId=document.getElementById('f-div')?.value||'';
+  const scopeSel=document.getElementById('grade-view-scope');
+  if(scopeSel) scopeSel.value=divId;
+  applyFilter();
+}
 
 // ── 대시보드 전체 렌더 ──────────────────────
 function renderDash(risks){
@@ -605,6 +612,7 @@ function renderDash(risks){
   updateFbarSelects();
   playDashAnims(); // KPI·알림 카드 진입 애니메이션 재생(차트 재생 시점과 동기화)
   renderAlerts(risks); renderKPI(risks); renderMatrix(risks); renderAuditKPI(risks); renderTrend(risks); renderDonut(risks);
+  _kpiAnimated=true; // 이번 렌더에서 카운트업을 다 재생했으니, 이후 같은 사이클의 필터 변경 등은 즉시 반영
   if(!activeDiv){
     // 메인뷰
     document.getElementById('section-main').style.display='';
@@ -788,7 +796,6 @@ function renderKPI(risks){
   // 현재
   animCount('k-cur-act',curAct);
   setBar('k-cur-bar',curRate); setText('k-cur-rate',curRate+'%');
-  if(accMon>0||monMon>0) _kpiAnimated=true; // 데이터가 한번 표시되면 이후엔 즉시 반영
 }
 // KPI 큰 숫자: 첫 데이터 표시 때 0→목표로 카운트업(이후 필터 변경은 즉시 반영해 차분하게)
 let _kpiAnimated=false;
@@ -967,7 +974,7 @@ function renderMatrix(risks){
     const rowBrandId=row.ent.brand?row.ent.id:'';
     const cellsHtml=row.cells.map((c,ci)=>{
       if(!c.grade) return `<td><span class="cp-none">—</span></td>`;
-      return `<td><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><br><span class="gc-frac">${c.num}/${c.den}</span></td>`;
+      return `<td><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><br><span class="gc-frac"><span class="gc-num">${c.num}</span>/${c.den}</span></td>`;
     }).join('');
     return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.45}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
   }).join('');
@@ -1020,7 +1027,8 @@ function renderAuditKPI(risks){
   const major=sumCnt(auditRows.filter(r=>r.discipline_type==='중징계'));
   const criminal=sumCnt(auditRows.filter(r=>r.discipline_type==='형사고발'));
 
-  setText('k-audit-done',`${done}/${total}`);
+  animCount('k-audit-done',done);
+  animCount('k-audit-total',total);
   animCount('k-audit-minor',minor);
   animCount('k-audit-major',major);
   animCount('k-audit-criminal',criminal);
@@ -3101,6 +3109,7 @@ function startLiveTicker(){
     _kpiAnimated=false;
     renderKPI(getFiltered());
     renderMatrix(getFiltered());
+    renderAuditKPI(getFiltered());
   },10000);
 }
 
