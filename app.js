@@ -55,6 +55,12 @@ function toggleAuditFields(prefix, catName){
   const isAudit=catName==='감사';
   document.querySelectorAll('.audit-field-'+prefix).forEach(el=>el.classList.toggle('hidden-fg',!isAudit));
 }
+// 부실채권 금액 필드 표시/숨김 (미입금/2개월 초과 미입금 선택 시에만)
+const AMOUNT_REQUIRED_TYPES=['미입금','2개월 초과 미입금'];
+function toggleAmountField(prefix, catName, violationType){
+  const needAmount=catName==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
+  document.querySelectorAll('.amount-field-'+prefix).forEach(el=>el.classList.toggle('hidden-fg',!needAmount));
+}
 
 // ── 위반유형 목록 (영역 대분류 이름과 매핑) ────────────────
 const VIOLATION_TYPES = {
@@ -94,6 +100,14 @@ function buildViolationTypeOptions(catName, currentVal=''){
 function fillViolationTypeSel(prefix, catName, currentVal=''){
   const el=document.getElementById(prefix+'-violation-type');
   if(el) el.innerHTML=buildViolationTypeOptions(catName, currentVal);
+}
+// 위반유형을 평탄한 목록으로 반환 (엑셀 검증 등, 그룹 구분 없이)
+function flatViolationTypes(catName){
+  const n=(catName||'').trim();
+  const key=Object.keys(VIOLATION_TYPES).find(k=>k.toLowerCase()===n.toLowerCase());
+  const items=key?VIOLATION_TYPES[key]:null;
+  if(!items) return [];
+  return typeof items[0]==='string' ? items : items.flatMap(g=>g.items);
 }
 
 // ── 건수 집계 헬퍼 ──────────────────────────
@@ -280,6 +294,7 @@ async function loadMaster(){
   allDiv=d.data||[]; allBrands=b.data||[]; allCats=c.data||[]; allSubs=s.data||[]; allStores=st.data||[];
   fillSel('f-div',allDiv,'전체 계열사');
   fillSel('lf-div',allDiv,'전체 계열사');
+  fillSel('grade-view-scope',allDiv,'전체 (계열사별)');
   fillSel('f-cat',allCats,'전체 영역 대분류');
   fillSel('lf-cat',allCats,'전체 영역 대분류');
   ['m-div','p-div'].forEach(id=>{
@@ -301,7 +316,7 @@ async function loadAll(){
   const {data,error}=await sb.from('risks').select(`
     id,registered_at,title,status,grade,note,created_at,
     item_state,violation_count,monitoring_count,store_id,violation_type,
-    discipline_type,discipline_name,sentence,
+    discipline_type,discipline_name,sentence,amount,
     divisions(id,name),brands(id,name),
     risk_categories(id,name),risk_subcategories(id,name),
     stores(id,name)
@@ -396,31 +411,56 @@ function onMonthFilterChange(){
   renderDash(getFiltered());
 }
 
-// ── 등급 자동 산정 ───────────────────────────
-// 등급은 '등록 건별'로 자동 계산된다(별도 수동 지정 칸 없음).
-// 기준:
-//   위험: 처리 상태가 '위반'(미해결)        또는  같은 '영역 대분류'의 최근 30일 위반/완료가 GRADE_SR_HI건 이상
-//   주의: 처리 상태가 '모니터링'(주시중)     또는  같은 '영역 대분류'의 최근 30일 위반/완료가 GRADE_SR_MID건 이상
-//   안전: 그 외(주로 '완료' = 해결됨)
-// ※ '동일 위반'은 같은 '영역 대분류' 여부로만 판단(브랜드·중분류는 보지 않음).
-// ※ 전월 대비 증가율 기준은 제거됨.
-// ※ 임계값(GRADE_SR_HI/MID)을 올리고 내려 위험/주의로 올라가는 정도를 조절한다.
-const GRADE_SR_HI=25;  // 위험으로 올리는 '동일 대분류 최근30일' 건수
-const GRADE_SR_MID=15; // 주의로 올리는 '동일 대분류 최근30일' 건수
-function computeGrade(r,all,now=new Date()){
-  // 동일 위반: 같은 '영역 대분류'의 최근 30일 위반/완료 건수
-  const catId=r.risk_categories?.id;
-  const ago30=new Date(now); ago30.setDate(now.getDate()-30);
-  const sameRecent=all.filter(x=>{
-    if(x.item_state!=='위반'&&x.item_state!=='완료') return false;
-    if(x.risk_categories?.id!==catId) return false;
-    const d=x.registered_at?new Date(x.registered_at):null;
-    return d&&d>=ago30;
-  }).length;
-
-  if(r.item_state==='위반'    || sameRecent>=GRADE_SR_HI)  return '위험';
-  if(r.item_state==='모니터링' || sameRecent>=GRADE_SR_MID) return '주의';
-  return '안전';
+// ── 등급 자동 산정(A/B/C/D) ───────────────────────────
+// 등급은 '법인 × 영역 대분류' 단위로 계산되어 같은 그룹의 모든 건이 동일한 등급을 갖는다.
+// 집계 기간: gradePeriodMode가 '당월'이면 그 달 1일~기준일, '연누적'(기본)이면 그 해 1/1~기준일.
+// 감사·재고는 등급 산정 대상에서 제외(null → gradeBadge에서 '-' 표시).
+let gradePeriodMode='연누적'; // '연누적' | '당월'
+const GRADE_CAT5=['중대재해','불법파견','공정거래','영업비밀','IP'];   // 위반(위반+완료) 건수 기준
+const GRADE_EXCLUDE=['감사','재고'];                                 // 등급 산정 제외
+const BAD_DEBT_AMOUNT_LIMIT=100000000; // 부실채권 D등급 금액 기준(1억)
+function gradeTier(cnt){
+  if(cnt<=3) return 'A';
+  if(cnt<=6) return 'B';
+  if(cnt<=9) return 'C';
+  return 'D';
+}
+// 집계 기간 윈도우: gradePeriodMode에 따라 연누적(그 해 1/1~기준일) 또는 당월(그 달 1일~기준일)
+function gradeWindow(cutoff=refNow()){
+  const start = gradePeriodMode==='당월'
+    ? new Date(cutoff.getFullYear(),cutoff.getMonth(),1)
+    : new Date(cutoff.getFullYear(),0,1);
+  return {start,cutoff};
+}
+// 카테고리명 + 해당 건수 집합만으로 등급(A~D) 계산 — division/brand 등 어떤 단위로 묶든 재사용 가능
+function calcCategoryGrade(catName, group){
+  if(GRADE_EXCLUDE.includes(catName)) return null;
+  if(catName==='부실채권'){
+    // '2개월 초과 미입금' 중 금액이 1억 이하인 건이 하나라도 있으면 D
+    const hasBigD=group.some(x=>x.violation_type==='2개월 초과 미입금' && (x.amount??0)<=BAD_DEBT_AMOUNT_LIMIT);
+    if(hasBigD) return 'D';
+    return gradeTier(sumCnt(group)); // 발생+해결 전체 건수
+  }
+  if(GRADE_CAT5.includes(catName)) return gradeTier(sumViol(group)); // 위반+완료 건수
+  return null;
+}
+function computeGrade(r,all,cutoff=refNow()){
+  const catName=(r.risk_categories?.name||'').trim();
+  const divId=r.divisions?.id, catId=r.risk_categories?.id;
+  const {start}=gradeWindow(cutoff);
+  const group=all.filter(x=>{
+    if(x.divisions?.id!==divId || x.risk_categories?.id!==catId) return false;
+    if(!x.registered_at) return false;
+    const d=new Date(x.registered_at);
+    return d>=start && d<=cutoff;
+  });
+  return calcCategoryGrade(catName, group);
+}
+// 등급 집계 기간(연누적/당월) 토글 변경 시 전체 재계산 후 다시 그림
+function recomputeGrades(){
+  allRisks.forEach(r=>{ r.grade=computeGrade(r,allRisks); });
+  buildSnapshot();
+  renderCurrentPage();
 }
 
 // ── 사이드바 배지 ───────────────────────────
@@ -446,6 +486,9 @@ function setDiv(name,el){
   const brands=name?allBrands.filter(b=>b.division_id===dObj?.id):allBrands;
   fillSel('f-brand',brands,'전체 브랜드/조직');
   document.getElementById('f-brand').value='';
+  // 측정판의 계열사/브랜드 전환 드롭다운은 사이드바 이동 시 항상 초기화(전체 계열사별로 복귀)
+  const scopeSel=document.getElementById('grade-view-scope');
+  if(scopeSel) scopeSel.value='';
   // 대시보드로 전환
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
   document.getElementById('page-dashboard').classList.add('on');
@@ -532,7 +575,7 @@ function renderDash(risks){
   if(fbar) fbar.style.display='';
   updateFbarSelects();
   playDashAnims(); // KPI·알림 카드 진입 애니메이션 재생(차트 재생 시점과 동기화)
-  renderAlerts(risks); renderKPI(risks); renderTrend(risks); renderDonut(risks);
+  renderAlerts(risks); renderKPI(risks); renderMatrix(risks); renderAuditKPI(risks); renderTrend(risks); renderDonut(risks);
   if(!activeDiv){
     // 메인뷰
     document.getElementById('section-main').style.display='';
@@ -549,10 +592,11 @@ function renderDash(risks){
 }
 
 // ── 알림 (장기 미해결 + 이상 급증) ────────────────────────
-let _alertOverdueList=[], _alertSurgeList=[], _alertOverdueDays=3;
+let _alertOverdueList=[], _alertOverdueDays=3;
 
+// 장기 미해결: 등록 후 N일(기준일) 이상 '위반' 상태인 건만. '모니터링'은 제외(완료할 것 없음).
+// 조치중 KPI 카드의 SLA 라인에 노출됨(showOverdueModal).
 function renderAlerts(risks){
-  // (1) 장기 미해결: 등록 후 N일(기준일) 이상 '위반' 상태인 건만. '모니터링'은 제외(완료할 것 없음).
   const days=parseInt(document.getElementById('alert-overdue-days')?.value||'10');
   _alertOverdueDays=days;
   const cutoff=refNow(); cutoff.setHours(0,0,0,0); cutoff.setDate(cutoff.getDate()-days);
@@ -564,38 +608,8 @@ function renderAlerts(risks){
   _alertOverdueList=overdue;
   const oEl=document.getElementById('alert-overdue-n');
   if(oEl) oEl.textContent=overdue.length.toLocaleString();
-  const oCard=document.querySelector('.ac-overdue');
-  if(oCard) oCard.classList.toggle('has-alert', overdue.length>0);
-
-  // (2) 이상 급증: (계열사 × 영역 대분류) 그룹별 최근 1개월(30일) 위반 vs 전월 1개월(직전 30일)
-  const now=refNow(); now.setHours(0,0,0,0);
-  const recentStart=new Date(now); recentStart.setDate(recentStart.getDate()-30);
-  const baselineStart=new Date(now); baselineStart.setDate(baselineStart.getDate()-60);
-  const groups={};
-  risks.forEach(r=>{
-    if(r.item_state!=='위반'&&r.item_state!=='완료') return;
-    if(!r.registered_at) return;
-    const d=new Date(r.registered_at);
-    if(d>=now) return;
-    const k=`${r.divisions?.id||0}_${r.risk_categories?.id||0}`;
-    if(!groups[k]) groups[k]={divId:r.divisions?.id, catId:r.risk_categories?.id, div:r.divisions?.name||'-', cat:r.risk_categories?.name||'-', recent:0, baseline:0, recentItems:[]};
-    if(d>=recentStart){ groups[k].recent++; groups[k].recentItems.push(r); }
-    else if(d>=baselineStart){ groups[k].baseline++; }
-  });
-  const surges=[];
-  Object.values(groups).forEach(g=>{
-    // 최근 1개월 위반이 3건 이상이면서, 전월 1개월 대비 20% 이상(=1.2배) 증가
-    if(g.recent>=3 && g.recent/Math.max(g.baseline,1) >= 1.2){
-      g.pct=Math.round((g.recent/Math.max(g.baseline,1)-1)*100);
-      surges.push(g);
-    }
-  });
-  surges.sort((a,b)=>b.pct-a.pct);
-  _alertSurgeList=surges;
-  const sEl=document.getElementById('alert-surge-n');
-  if(sEl) sEl.textContent=surges.length.toLocaleString();
-  const sCard=document.querySelector('.ac-surge');
-  if(sCard) sCard.classList.toggle('has-alert', surges.length>0);
+  const slaEl=document.querySelector('.kpi-sla');
+  if(slaEl) slaEl.classList.toggle('has-alert', overdue.length>0);
 }
 
 function showOverdueModal(){
@@ -632,33 +646,6 @@ function showOverdueModal(){
   showAlertModal(html);
 }
 
-function showSurgeModal(){
-  const list=_alertSurgeList;
-  if(!list.length){ showToast('급증 영역이 없습니다'); return; }
-  const html=`
-    <div class="mo-hd">
-      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">📈 이상 급증 영역</span></div>
-      <button class="mo-cls" onclick="closeAlertModal()">×</button>
-    </div>
-    <div class="mo-bd">
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">최근 1개월 위반 건수가 전월 1개월 대비 <b style="color:#dc2626">20% 이상 증가</b>한 영역 (절대 건수 3건 이상) — <b>${list.length}건</b></div>
-      <div style="overflow-x:auto">
-      <table class="tbl" style="min-width:520px">
-        <thead><tr><th>계열사</th><th>리스크 영역</th><th>최근 1개월</th><th>전월 1개월</th><th>증감</th></tr></thead>
-        <tbody>
-          ${list.map(g=>`<tr>
-            <td>${g.div}</td>
-            <td>${g.cat}</td>
-            <td style="text-align:center;font-weight:700">${g.recent}건</td>
-            <td style="text-align:center;color:var(--text3)">${g.baseline}건</td>
-            <td style="font-weight:700;color:#dc2626">+${g.pct}%</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
-  showAlertModal(html);
-}
 
 function showAlertModal(html){
   let ov=document.getElementById('alert-ov');
@@ -686,15 +673,29 @@ if('serviceWorker' in navigator){
 }
 
 // ── KPI ────────────────────────────────────
+// 금액 포맷: 억/만원 단위로 축약 (예: 123,000,000 → "1.2억원")
+function fmtWon(n){
+  n=Math.round(n||0);
+  if(n<=0) return '0원';
+  if(n>=100000000) return (n/100000000).toFixed(1).replace(/\.0$/,'')+'억원';
+  if(n>=10000) return (n/10000).toFixed(1).replace(/\.0$/,'')+'만원';
+  return n.toLocaleString()+'원';
+}
 function renderKPI(risks){
-  // 감사 영역은 KPI에 반영하지 않음
-  risks=risks.filter(r=>r.risk_categories?.name!=='감사');
-  const t=sumCnt(risks);
   const now=refNow();
   const thisY=now.getFullYear(), thisM=now.getMonth();
   // 당월 카드 배지 = 기준 월 (스냅샷이면 연.월, 라이브면 이번달 월번호)
   const mb=document.getElementById('k-month-badge');
   if(mb) mb.textContent = viewMonth ? `${thisY}.${String(thisM+1).padStart(2,'0')}월` : `${thisM+1}월`;
+
+  // 회수금액: 부실채권 발생액(전체, 금액 입력된 건 전부) 대비 해결액(해결 상태) — 기준일까지
+  const badDebtRisks=risks.filter(r=>r.risk_categories?.name==='부실채권' && r.amount);
+  const occurredAmt=badDebtRisks.reduce((s,r)=>s+(r.amount||0),0);
+  const recovery=badDebtRisks.filter(r=>r.item_state==='해결').reduce((s,r)=>s+(r.amount||0),0);
+  const recoveryRate=occurredAmt>0?Math.round(recovery/occurredAmt*100):0;
+
+  // 감사·부실채권은 위반/모니터링/조치중 KPI에 반영하지 않음
+  risks=risks.filter(r=>r.risk_categories?.name!=='감사' && r.risk_categories?.name!=='부실채권');
 
   // 누적: 위반(위반+완료) / 모니터링(전체) — 입력 건수 합계 기준
   const accViol=sumViol(risks);
@@ -717,26 +718,19 @@ function renderKPI(risks){
   const curTotal=curAct+curDone;
   const curRate=curTotal>0?Math.round(curDone/curTotal*100):0;
 
-  // 등급 (입력 건수 합계 기준)
-  const 위험=sumCnt(risks.filter(r=>r.grade==='위험'));
-  const 주의=sumCnt(risks.filter(r=>r.grade==='주의'));
-  const 안전=sumCnt(risks.filter(r=>r.grade==='안전'));
-  const pct=v=>t>0?Math.round(v/t*100):0;
-
   // 누적
   animCount('k-acc-viol',accViol); animCount('k-acc-mon',accMon);
   setBar('k-acc-bar',accRate); setText('k-acc-rate',accRate+'%');
   // 당월
   animCount('k-mon-viol',monViol); animCount('k-mon-mon',monMon);
   setBar('k-mon-bar',monRate); setText('k-mon-rate',monRate+'%');
+  // 회수금액
+  setText('k-recovery-amt',fmtWon(recovery));
+  setBar('k-recovery-bar',recoveryRate); setText('k-recovery-rate',recoveryRate+'%');
   // 현재
   animCount('k-cur-act',curAct);
   setBar('k-cur-bar',curRate); setText('k-cur-rate',curRate+'%');
-  // 등급
-  animCount('k-위험-n',위험); setBar('k-위험-bar',pct(위험),'fill-위험'); setText('k-위험-pct',pct(위험)+'%');
-  animCount('k-주의-n',주의); setBar('k-주의-bar',pct(주의),'fill-주의'); setText('k-주의-pct',pct(주의)+'%');
-  animCount('k-안전-n',안전); setBar('k-안전-bar',pct(안전),'fill-안전'); setText('k-안전-pct',pct(안전)+'%');
-  if(t>0) _kpiAnimated=true; // 데이터가 한번 표시되면 이후엔 즉시 반영
+  if(accMon>0||monMon>0) _kpiAnimated=true; // 데이터가 한번 표시되면 이후엔 즉시 반영
 }
 // KPI 큰 숫자: 첫 데이터 표시 때 0→목표로 카운트업(이후 필터 변경은 즉시 반영해 차분하게)
 let _kpiAnimated=false;
@@ -745,9 +739,9 @@ function animCount(id,target){
   target=Math.round(target||0);
   const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
   if(reduce||_kpiAnimated||target<=0){ el.textContent=target; return; }
-  const dur=750, start=performance.now();
+  const dur=1800, start=performance.now();
   (function tick(now){
-    const p=Math.min((now-start)/dur,1);
+    const p=Math.max(0,Math.min((now-start)/dur,1));
     el.textContent=Math.round(target*(1-Math.pow(1-p,3))); // easeOutCubic
     if(p<1) requestAnimationFrame(tick); else el.textContent=target;
   })(performance.now());
@@ -840,25 +834,129 @@ function renderDonut(risks){
   `).join('');
 }
 
-// ── 매트릭스 ───────────────────────────────
+// ── 리스크 노출/측정판 ───────────────────────────────
+// 법인(계열사) × 영역 대분류가 기본. 상단 드롭다운으로 특정 계열사를 고르면 그 계열사의 브랜드별 순위로 전환.
+// 감사·재고는 등급 산정 대상이 아니라 열에서 제외.
+// 종합등급: 영역별 등급을 A=10/B=8/C=5/D=3점으로 환산한 평균 점수로 산정.
+//   평균 9~10=A, 7~8=B, 5~6=C, 3~4=D, 3 미만=F
+const GRADE_POINT={A:10,B:8,C:5,D:3};
+function scoreToOverallGrade(avg){
+  if(avg>=9) return 'A';
+  if(avg>=7) return 'B';
+  if(avg>=5) return 'C';
+  if(avg>=3) return 'D';
+  return 'F';
+}
 function renderMatrix(risks){
-  const divs=activeDiv?allDiv.filter(d=>d.name===activeDiv):allDiv;
-  document.getElementById('mx-head').innerHTML=
-    `<tr><th class="rh">계열사</th>${allCats.map(c=>`<th>${c.name}</th>`).join('')}</tr>`;
-  document.getElementById('mx-body').innerHTML=divs.map(div=>{
-    const cells=allCats.map(cat=>{
-      const items=risks.filter(r=>r.divisions?.id==div.id&&r.risk_categories?.id==cat.id);
-      if(!items.length) return `<td><span class="cp-none">—</span></td>`;
-      const h=sumCnt(items.filter(r=>r.grade==='위험'));
-      const m=sumCnt(items.filter(r=>r.grade==='주의'));
-      const l=sumCnt(items.filter(r=>r.grade==='안전'));
-      let cls='cp-안전',lbl=`안전 ${l}`;
-      if(h){cls='cp-위험';lbl=`위험 ${h}`;}
-      else if(m){cls='cp-주의';lbl=`주의 ${m}`;}
-      return `<td><span class="cpill ${cls}" onclick="drillDown(${div.id},${cat.id})">${lbl}</span></td>`;
+  const head=document.getElementById('grade-mx-head'), body=document.getElementById('grade-mx-body');
+  if(!head||!body) return;
+  const cats=allCats.filter(c=>!GRADE_EXCLUDE.includes(c.name));
+  const scopeSel=document.getElementById('grade-view-scope');
+  const scopeDivObj=scopeSel&&scopeSel.value?allDiv.find(d=>d.id==scopeSel.value):null;
+
+  let entities, entityLabel;
+  if(scopeDivObj){
+    entities=allBrands.filter(b=>b.division_id===scopeDivObj.id).map(b=>({id:b.id,name:b.name,brand:true}));
+    entityLabel='브랜드';
+  } else {
+    entities=(activeDiv?allDiv.filter(d=>d.name===activeDiv):allDiv).map(d=>({id:d.id,name:d.name,brand:false}));
+    entityLabel='계열사';
+  }
+
+  head.innerHTML=`<tr><th class="rh">순위</th><th class="rh">${entityLabel}</th><th>종합등급</th>${cats.map(c=>`<th>${c.name}</th>`).join('')}</tr>`;
+
+  const {start,cutoff}=gradeWindow();
+  const rowsData=entities.map(ent=>{
+    const cells=cats.map(cat=>{
+      const items=risks.filter(r=>{
+        const match=ent.brand ? r.brands?.id==ent.id : r.divisions?.id==ent.id;
+        if(!match || r.risk_categories?.id!=cat.id) return false;
+        if(!r.registered_at) return false;
+        const d=new Date(r.registered_at);
+        return d>=start && d<=cutoff;
+      });
+      if(!items.length) return {grade:null,num:0,den:0};
+      // 분수는 항상 위반(위반+완료)/전체 건수
+      const den=sumCnt(items), num=sumViol(items);
+      const grade = ent.brand ? calcCategoryGrade(cat.name, items) : (items[0].grade||null);
+      return {grade, num, den};
+    });
+    const validCells=cells.filter(c=>c.grade);
+    let overall=null, avgScore=null;
+    if(validCells.length){
+      avgScore=validCells.reduce((s,c)=>s+GRADE_POINT[c.grade],0)/validCells.length;
+      overall=scoreToOverallGrade(avgScore);
+    }
+    return {ent, cells, overall, avgScore};
+  });
+
+  // 평균 점수 좋은 순으로 정렬, 데이터 없는 법인/브랜드는 맨 아래
+  const sorted=[...rowsData].sort((a,b)=>(b.avgScore??-1)-(a.avgScore??-1));
+  const drillDivId=scopeDivObj?scopeDivObj.id:null;
+
+  body.innerHTML=sorted.map((row,i)=>{
+    const dim=!row.overall;
+    const rankHtml=dim?'—':(i<3?`<span class="rank-circle rank-${i+1}">${i+1}</span>`:`${i+1}`);
+    const overallHtml=row.overall
+      ?`<div class="grade-cell"><span class="cpill cp-${row.overall}">${row.overall}</span><span class="overall-score">${row.avgScore.toFixed(1)}점</span></div>`
+      :`<span class="cp-none">—</span>`;
+    const rowDivId=row.ent.brand?drillDivId:row.ent.id;
+    const rowBrandId=row.ent.brand?row.ent.id:'';
+    const cellsHtml=row.cells.map((c,ci)=>{
+      if(!c.grade) return `<td><span class="cp-none">—</span></td>`;
+      return `<td><div class="grade-cell"><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><span class="gc-frac">${c.num}/${c.den}</span></div></td>`;
     }).join('');
-    return `<tr><td>${div.name}</td>${cells}</tr>`;
+    return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.18}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
   }).join('');
+
+  // LIVE 배지(스냅샷 조회 중이 아닐 때만) · 기간 라벨
+  const liveEl=document.getElementById('grade-live-badge');
+  if(liveEl) liveEl.style.display=viewMonth?'none':'';
+  const now=refNow();
+  const labelEl=document.getElementById('grade-period-label');
+  if(labelEl) labelEl.textContent=`${now.getFullYear()}년 ${now.getMonth()+1}월 ${gradePeriodMode} 기준`;
+}
+
+// ── 감사 영역 KPI + 조치사항 판 ──────────────────
+function renderAuditKPI(risks){
+  const mode=document.getElementById('audit-period-mode')?.value||'누적';
+  const monthPick=document.getElementById('audit-month-pick');
+  if(monthPick) monthPick.style.display=mode==='지정월'?'':'none';
+
+  let auditRows=risks.filter(r=>r.risk_categories?.name==='감사');
+  if(mode==='지정월' && monthPick?.value){
+    const [y,m]=monthPick.value.split('-').map(Number);
+    auditRows=auditRows.filter(r=>{
+      if(!r.registered_at) return false;
+      const d=new Date(r.registered_at);
+      return d.getFullYear()===y && d.getMonth()===(m-1);
+    });
+  }
+
+  const total=sumCnt(auditRows);
+  const done=sumCnt(auditRows.filter(r=>r.item_state==='조치완료'));
+  const minor=sumCnt(auditRows.filter(r=>r.discipline_type==='경징계'));
+  const major=sumCnt(auditRows.filter(r=>r.discipline_type==='중징계'));
+  const criminal=sumCnt(auditRows.filter(r=>r.discipline_type==='형사고발'));
+
+  setText('k-audit-done',`${done}/${total}`);
+  animCount('k-audit-minor',minor);
+  animCount('k-audit-major',major);
+  animCount('k-audit-criminal',criminal);
+
+  // 조치사항 판: 감사 영역 입력값을 최근순으로 나열
+  const tbody=document.getElementById('audit-action-body');
+  if(!tbody) return;
+  const sorted=sortByRecent(auditRows);
+  tbody.innerHTML=sorted.length?sorted.map(r=>`
+    <tr onclick="openEdit('${r.id}')" style="cursor:pointer">
+      <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
+      <td>${r.divisions?.name||'-'}</td>
+      <td>${escapeHTML(r.title||'-')}</td>
+      <td>${escapeHTML(r.sentence||'-')}</td>
+      <td>${escapeHTML(r.discipline_name||'-')}</td>
+      <td class="td-clip">${escapeHTML(r.note||'-')}</td>
+    </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
 }
 
 // ── 위험도별 분류 ──────────────────────────
@@ -874,13 +972,18 @@ function sortByRecent(arr){
     return cb-ca;
   });
 }
-function applyGradeFilter(arr,selId){
+// 상태 필터: 전체('') / 모니터링 / 진행중(위반계열) / 완료(완료계열)
+function applyStateFilter(arr,selId){
   const v=document.getElementById(selId)?.value;
-  return v?arr.filter(r=>r.grade===v):arr;
+  if(!v) return arr;
+  if(v==='모니터링') return arr.filter(r=>r.item_state==='모니터링');
+  if(v==='진행중') return arr.filter(r=>isViolState(r.item_state));
+  if(v==='완료') return arr.filter(r=>isDoneState(r.item_state));
+  return arr;
 }
 
 function renderHighMain(risks){
-  const list=sortByRecent(applyGradeFilter(risks,'high-grade-filter'));
+  const list=sortByRecent(applyStateFilter(risks,'high-state-filter'));
   document.getElementById('high-cnt').textContent=`총 ${list.length}건`;
   const b=document.getElementById('high-body-main');
   if(!list.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';stopHighRotate();return;}
@@ -888,13 +991,13 @@ function renderHighMain(risks){
     <tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
-      <td>${escapeHTML(r.title||'-')}</td><td>${gradeBadge(r.grade)}</td>
+      <td>${escapeHTML(r.title||'-')}</td><td>${stateBadge(r.item_state)}</td>
     </tr>`).join('');
   startHighRotate('high-ticker-main');
 }
 
 function renderHighDiv(risks){
-  const list=sortByRecent(applyGradeFilter(risks,'high-grade-filter-div'));
+  const list=sortByRecent(applyStateFilter(risks,'high-state-filter-div'));
   const el2=document.getElementById('high-cnt2');
   if(el2) el2.textContent=`총 ${list.length}건`;
   const b=document.getElementById('high-body-div');
@@ -903,7 +1006,7 @@ function renderHighDiv(risks){
     <tr onclick="openEdit('${r.id}')">
       <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
       <td>${r.brands?.name||'-'}</td>
-      <td>${escapeHTML(r.title||'-')}</td><td>${gradeBadge(r.grade)}</td>
+      <td>${escapeHTML(r.title||'-')}</td><td>${stateBadge(r.item_state)}</td>
     </tr>`).join('');
   startHighRotate('high-ticker-div');
 }
@@ -938,9 +1041,9 @@ function renderDivisionCards(risks){
   const cards=allDiv.map((div,i)=>{
     const items=risks.filter(r=>r.divisions?.id===div.id);
     if(!items.length) return '';
-    const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
-    const 주의=sumCnt(items.filter(r=>r.grade==='주의'));
-    const 안전=sumCnt(items.filter(r=>r.grade==='안전'));
+    const 위험=sumCnt(items.filter(r=>r.grade==='D'));
+    const 주의=sumCnt(items.filter(r=>r.grade==='B'||r.grade==='C'));
+    const 안전=sumCnt(items.filter(r=>r.grade==='A'));
     const t=sumCnt(items);
     const viol=sumViol(items);
     const mon=sumCnt(items);
@@ -977,9 +1080,9 @@ function renderBrandGrid(risks){
     cards=allDiv.map(div=>{
       const items=risks.filter(r=>r.divisions?.id===div.id);
       if(!items.length) return '';
-      const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
-      const 주의=sumCnt(items.filter(r=>r.grade==='주의'));
-      const 안전=sumCnt(items.filter(r=>r.grade==='안전'));
+      const 위험=sumCnt(items.filter(r=>r.grade==='D'));
+      const 주의=sumCnt(items.filter(r=>r.grade==='B'||r.grade==='C'));
+      const 안전=sumCnt(items.filter(r=>r.grade==='A'));
       const t=sumCnt(items);
       const viol=sumViol(items);
       const mon=sumCnt(items);
@@ -1005,9 +1108,9 @@ function renderBrandGrid(risks){
     cards=brands.map((b,i)=>{
       const items=risks.filter(r=>r.brands?.id===b.id);
       if(!items.length) return '';
-      const 위험=sumCnt(items.filter(r=>r.grade==='위험'));
-      const 주의=sumCnt(items.filter(r=>r.grade==='주의'));
-      const 안전=sumCnt(items.filter(r=>r.grade==='안전'));
+      const 위험=sumCnt(items.filter(r=>r.grade==='D'));
+      const 주의=sumCnt(items.filter(r=>r.grade==='B'||r.grade==='C'));
+      const 안전=sumCnt(items.filter(r=>r.grade==='A'));
       const t=sumCnt(items);
       const viol=sumViol(items);
       const mon=sumCnt(items);
@@ -1075,14 +1178,13 @@ function renderList(){
       <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
       <td>${r.risk_categories?.name||'-'}</td><td>${r.risk_subcategories?.name||'-'}</td>
       <td>${escapeHTML(r.title||'-')}</td>
-      <td>${gradeBadge(r.grade)}</td>
       <td>${stateBadge(r.item_state)}</td>
       <td style="text-align:center;font-weight:600">${rowCnt(r)}</td>
       <td class="td-clip">${escapeHTML(r.status||'-')}</td>
       <td class="td-clip">${escapeHTML(r.note||'-')}</td>
       <td><button class="btn btn-sm" onclick="event.stopPropagation();openEdit('${r.id}')">수정</button></td>
     </tr>`;
-  }).join(''):'<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">조건에 맞는 데이터 없음</td></tr>';
+  }).join(''):'<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:24px;font-size:12px">조건에 맞는 데이터 없음</td></tr>';
   document.getElementById('pgn').innerHTML=buildPagination(lPage,tp);
 }
 
@@ -1112,12 +1214,13 @@ function buildPagination(cur,tp){
 }
 
 // ── 드릴다운 ───────────────────────────────
-function drillDown(divId,catId){
+function drillDown(divId,catId,brandId){
   showPage('list',null);
   document.getElementById('lf-div').value=divId;
   document.getElementById('lf-cat').value=catId;
   fillSel('lf-sub', catId?allSubs.filter(s=>s.category_id==catId):[], '전체 영역 중분류');
   onLfDivChange();
+  if(brandId){ document.getElementById('lf-brand').value=brandId; lPage=1; renderList(); }
 }
 
 // ── 페이지 전환 ─────────────────────────────
@@ -1292,11 +1395,12 @@ function buildDataSummary(divFilter){
   }
 
   // 등급 분포
-  const 위험=sumCnt(base.filter(r=>r.grade==='위험'));
-  const 주의=sumCnt(base.filter(r=>r.grade==='주의'));
-  const 안전=sumCnt(base.filter(r=>r.grade==='안전'));
+  const gA=sumCnt(base.filter(r=>r.grade==='A'));
+  const gB=sumCnt(base.filter(r=>r.grade==='B'));
+  const gC=sumCnt(base.filter(r=>r.grade==='C'));
+  const gD=sumCnt(base.filter(r=>r.grade==='D'));
   L.push('[현재 등급 분포]');
-  L.push(`- 위험: ${위험}건 / 주의: ${주의}건 / 안전: ${안전}건`);
+  L.push(`- A(우수): ${gA}건 / B(양호): ${gB}건 / C(주의): ${gC}건 / D(위험): ${gD}건`);
   L.push('');
 
   // 최근 6개월 추세
@@ -1314,12 +1418,12 @@ function buildDataSummary(divFilter){
   }
   L.push('');
 
-  // 위험 등급 항목 샘플 (최근 10건)
-  const hi = base.filter(r=>r.grade==='위험')
+  // D(위험) 등급 항목 샘플 (최근 10건)
+  const hi = base.filter(r=>r.grade==='D')
     .sort((a,b)=>(b.registered_at||'').localeCompare(a.registered_at||''))
     .slice(0,10);
   if(hi.length){
-    L.push('[위험 등급 항목 (최근 10건)]');
+    L.push('[D(위험) 등급 항목 (최근 10건)]');
     hi.forEach(r=>{
       L.push(`- [${r.divisions?.name||'-'}/${r.brands?.name||'-'}] ${r.risk_categories?.name||'-'}${r.risk_subcategories?.name?'/'+r.risk_subcategories.name:''}: ${r.title} (등록 ${r.registered_at||'-'}, 상태 ${r.item_state||'-'})`);
     });
@@ -1477,6 +1581,7 @@ function onPCat(){
   const catName=(allCats.find(c=>c.id==catId)||{}).name||'';
   fillViolationTypeSel('p', catName);
   renderStateButtons('p', catName);
+  toggleAmountField('p', catName, '');
   // 영역 바꾸면 상태·조치사항 초기화
   document.getElementById('p-state').value='';
   const atEl=document.getElementById('p-action-text');
@@ -1498,6 +1603,9 @@ function resetInput(){
   // 감사 전용 필드 초기화
   ['p-discipline-type','p-discipline-name','p-sentence'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   document.querySelectorAll('.audit-field-p').forEach(el=>el.classList.add('hidden-fg'));
+  // 부실채권 금액 필드 초기화
+  const pAmt=document.getElementById('p-amount'); if(pAmt) pAmt.value='';
+  document.querySelectorAll('.amount-field-p').forEach(el=>el.classList.add('hidden-fg'));
   // 상태 초기화 (기본 3버튼 복원)
   document.getElementById('p-state').value='';
   renderStateButtons('p','');
@@ -1520,8 +1628,14 @@ async function saveInput(){
   const disciplineType=document.getElementById('p-discipline-type')?.value||null;
   const disciplineName=document.getElementById('p-discipline-name')?.value.trim()||null;
   const sentence=document.getElementById('p-sentence')?.value.trim()||null;
+  const amountStr=document.getElementById('p-amount')?.value ?? '';
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
   if(vtElP && vtElP.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
+  const catNameP=(allCats.find(c=>c.id==catId)||{}).name||'';
+  if(catNameP==='감사' && (!disciplineType||!disciplineName||!sentence)){showToast('감사 영역은 징계유형·징계자명·양형을 모두 입력해주세요');return;}
+  const amountNeededP=catNameP==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
+  if(amountNeededP && amountStr===''){showToast('금액을 입력해주세요');return;}
+  const amount=amountNeededP?parseInt(amountStr):null;
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('p-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
@@ -1534,7 +1648,8 @@ async function saveInput(){
     violation_count:state==='모니터링'?null:cntVal,
     monitoring_count:state==='모니터링'?cntVal:null,
     violation_type:violationType||null,
-    discipline_type:disciplineType,discipline_name:disciplineName,sentence
+    discipline_type:disciplineType,discipline_name:disciplineName,sentence,
+    amount
   });
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -1554,6 +1669,16 @@ function colToLetter(n){
 function sanitizeName(s){
   // Excel 정의명에 사용할 수 있도록: 영문/숫자/한글/언더스코어만 남김
   return String(s).replace(/[^\w가-힣]/g,'_');
+}
+const DISCIPLINE_TYPES=['금전회수','경징계','중징계','형사고발'];
+// 조치구분/이름·양형/조치내용을 하나의 조치사항 텍스트로 합성
+function buildActionStatus(actType, entries, other){
+  if(actType==='징계'){
+    const names=(entries||[]).filter(e=>e.name).map(e=>e.penalty?`${e.name}(${e.penalty})`:e.name);
+    return names.length?`[징계] ${names.join(', ')}`:null;
+  }
+  if(actType==='징계 외') return other?`[조치] ${other}`:null;
+  return other||null;
 }
 
 async function downloadBulkTemplate(){
@@ -1579,7 +1704,10 @@ async function downloadBulkTemplate(){
     {header:'조치구분(징계/징계 외)',key:'actType',width:22},
     {header:'이름(징계 시)',key:'actName',width:16},
     {header:'양형(징계 시)',key:'actPen',width:18},
-    {header:'조치내용(징계 외 시)',key:'actOther',width:30}
+    {header:'조치내용(징계 외 시)',key:'actOther',width:30},
+    {header:'위반유형',key:'vtype',width:26},
+    {header:'금액(부실채권 미입금/2개월초과미입금 시 필수)',key:'amount',width:32},
+    {header:'징계유형(감사 시 필수)',key:'discType',width:22}
   ];
   const hdr=ws.getRow(1);
   hdr.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
@@ -1628,6 +1756,24 @@ async function downloadBulkTemplate(){
     wb.definedNames.add(`_참조!$${L}$2:$${L}$${subs.length+1}`,`_s_${sanitizeName(cat.name)}`);
     col++;
   });
+  // 영역 대분류별 위반유형 목록(그룹 구분 없이 평탄화)
+  allCats.forEach(cat=>{
+    const types=flatViolationTypes(cat.name);
+    if(types.length===0) return;
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value=cat.name;
+    types.forEach((t,i)=>{ ref.getCell(`${L}${i+2}`).value=t; });
+    wb.definedNames.add(`_참조!$${L}$2:$${L}$${types.length+1}`,`_v_${sanitizeName(cat.name)}`);
+    col++;
+  });
+  // 징계유형 목록 (감사 영역 전용)
+  {
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value='__징계유형__';
+    DISCIPLINE_TYPES.forEach((s,i)=>{ ref.getCell(`${L}${i+2}`).value=s; });
+    wb.definedNames.add(`_참조!$${L}$2:$${L}$${DISCIPLINE_TYPES.length+1}`,'_disctypes');
+    col++;
+  }
 
   // 3) 입력 시트에 데이터 검증 적용 (행 2 ~ 501)
   const ROWS=500;
@@ -1639,6 +1785,8 @@ async function downloadBulkTemplate(){
     ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
     ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_states']};
     ws.getCell(`I${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_actions']};
+    ws.getCell(`M${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_v_"&SUBSTITUTE(D${r}," ","_"))`]};
+    ws.getCell(`O${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_disctypes']};
   }
 
   // 4) 안내 시트
@@ -1649,14 +1797,15 @@ async function downloadBulkTemplate(){
     '',
     '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
     '2. 별표(*) 표시 컬럼은 필수입니다. (건수 포함)',
-    '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분은 드롭다운에서 선택하세요.',
-    '4. 브랜드는 계열사를, 영역 중분류는 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
+    '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분 / 위반유형 / 징계유형은 드롭다운에서 선택하세요.',
+    '4. 브랜드는 계열사를, 영역 중분류·위반유형은 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
     '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
     '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링이면 모니터링 건수, 위반/완료면 위반 건수로 집계)',
-    '7. 조치사항: 조치구분에서 \'징계\'를 고르면 이름·양형을, \'징계 외\'를 고르면 조치내용을 적으세요. (선택 입력)',
-    '8. 등급(위험/주의/안전)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
-    '9. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
-    '10. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
+    '7. 영역 대분류가 \'감사\'이면 징계유형·징계자명(이름)·양형이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
+    '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'2개월 초과 미입금\'이면 금액이 필수입니다.',
+    '9. 등급(A/B/C/D)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
+    '10. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
+    '11. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
   ];
   lines.forEach((t,i)=>{ guide.getCell(`A${i+1}`).value=t; });
   guide.getCell('A1').font={bold:true,size:14,color:{argb:'FFC8102E'}};
@@ -1707,6 +1856,9 @@ async function handleBulkUpload(ev){
       else if(t.startsWith('이름')) colMap.actName=colNumber;
       else if(t.startsWith('양형')) colMap.actPen=colNumber;
       else if(t.startsWith('조치내용')) colMap.actOther=colNumber;
+      else if(t.startsWith('위반유형')) colMap.vtype=colNumber;
+      else if(t.startsWith('금액')) colMap.amount=colNumber;
+      else if(t.startsWith('징계유형')) colMap.discType=colNumber;
     });
     const missing=['date','div','brand','cat','title','state','cnt'].filter(k=>!colMap[k]);
     if(missing.length){
@@ -1732,6 +1884,9 @@ async function handleBulkUpload(ev){
       const actName=colMap.actName?String(row.getCell(colMap.actName).value||'').trim():'';
       const actPen=colMap.actPen?String(row.getCell(colMap.actPen).value||'').trim():'';
       const actOther=colMap.actOther?String(row.getCell(colMap.actOther).value||'').trim():'';
+      const vtype=colMap.vtype?String(row.getCell(colMap.vtype).value||'').trim():'';
+      const amountStr=colMap.amount?String(row.getCell(colMap.amount).value??'').trim():'';
+      const discType=colMap.discType?String(row.getCell(colMap.discType).value||'').trim():'';
 
       // 전부 비어있으면 skip
       if(!dateCell&&!divName&&!brandName&&!catName&&!title&&!state&&!cntStr) continue;
@@ -1784,6 +1939,27 @@ async function handleBulkUpload(ev){
       // 조치구분(선택) — 값이 있으면 징계/징계 외만 허용
       if(actType&&!['징계','징계 외'].includes(actType)) errs.push("조치구분은 '징계' 또는 '징계 외'");
 
+      // 감사 영역: 징계유형·이름·양형 모두 필수
+      if(catObj?.name==='감사' && (!discType||!actName||!actPen)) errs.push('감사 영역은 징계유형·징계자명·양형을 모두 입력해야 함');
+      if(discType && !DISCIPLINE_TYPES.includes(discType)) errs.push('징계유형은 금전회수/경징계/중징계/형사고발 중 하나');
+
+      // 위반유형(선택) — 값이 있으면 해당 영역 대분류에 속하는지 검증
+      if(vtype && catObj){
+        const allowed=flatViolationTypes(catObj.name);
+        if(allowed.length && !allowed.includes(vtype)) errs.push(`위반유형 '${vtype}'는 '${catName}'에 속하지 않음`);
+      }
+
+      // 금액 — 부실채권 + 미입금/2개월 초과 미입금이면 필수
+      let amountVal=null;
+      const amountNeeded=catObj?.name==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(vtype);
+      if(amountNeeded){
+        if(amountStr==='') errs.push('금액 누락(부실채권 미입금/2개월 초과 미입금)');
+        else if(isNaN(Number(amountStr))||Number(amountStr)<0) errs.push('금액은 0 이상 숫자');
+        else amountVal=parseInt(amountStr);
+      } else if(amountStr!==''){
+        amountVal=isNaN(Number(amountStr))?null:parseInt(amountStr);
+      }
+
       if(errs.length){
         errors.push({row:r, msgs:errs});
       } else {
@@ -1793,7 +1969,10 @@ async function handleBulkUpload(ev){
           grade:'안전', item_state:state, registered_at:dateStr, title,
           status:buildActionStatus(actType,[{name:actName,penalty:actPen}],actOther), note:null,
           violation_count:state==='모니터링'?null:cntVal,
-          monitoring_count:state==='모니터링'?cntVal:null
+          monitoring_count:state==='모니터링'?cntVal:null,
+          violation_type:vtype||null,
+          discipline_type:discType||null, discipline_name:actName||null, sentence:actPen||null,
+          amount:amountVal
         });
       }
     }
@@ -1907,6 +2086,7 @@ function buildInlineEditRow(r){
   const ieVT=r.violation_type||'';
   const ieStates=getCatStates(ieCatName);
   const isAudit=ieCatName==='감사';
+  const needAmount=ieCatName==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(ieVT);
   return `<tr class="ier-row"><td colspan="8">
     <div class="ier-form">
       <div class="fg">
@@ -1956,21 +2136,22 @@ function buildInlineEditRow(r){
       </div>
       <div class="fg"><label class="flb">건수 *</label><input type="number" class="fc" id="ie-cnt" value="${r.monitoring_count??r.violation_count??''}" min="0"></div>
       <div class="fg full"><label class="flb">위반유형</label>
-        <select class="fc" id="ie-violation-type">
+        <select class="fc" id="ie-violation-type" onchange="toggleAmountField('ie',(allCats.find(c=>c.id==document.getElementById('ie-cat').value)||{}).name,this.value)">
           ${buildViolationTypeOptions(ieCatName, ieVT)}
         </select>
       </div>
+      <div class="fg amount-field-ie${needAmount?'':' hidden-fg'}"><label class="flb">금액 *</label><input type="number" class="fc" id="ie-amount" value="${r.amount??''}" placeholder="원 단위로 입력" min="0"></div>
       <div class="fg full"><label class="flb">리스크명 *</label><input type="text" class="fc" id="ie-title" value="${escapeHTML(r.title||'')}"></div>
       <div class="fg full"><label class="flb">조치사항</label>
         <textarea class="fc" id="ie-action-text" rows="2" ${(isViolState(curState)||isDoneState(curState))?'':'disabled'} placeholder="${(isViolState(curState)||isDoneState(curState))?'조치사항을 입력하세요':'위반 또는 완료 상태일 때 입력 가능합니다'}">${escapeHTML(r.status||'')}</textarea>
       </div>
       ${isAudit?`
-      <div class="fg"><label class="flb">징계유형</label><select class="fc" id="ie-discipline-type">
+      <div class="fg"><label class="flb">징계유형 *</label><select class="fc" id="ie-discipline-type">
         <option value="">선택 안 함</option>
         ${['금전회수','경징계','중징계','형사고발'].map(v=>`<option value="${v}"${r.discipline_type===v?' selected':''}>${v}</option>`).join('')}
       </select></div>
-      <div class="fg"><label class="flb">징계자명</label><input type="text" class="fc" id="ie-discipline-name" value="${escapeHTML(r.discipline_name||'')}" placeholder="이름"></div>
-      <div class="fg"><label class="flb">양형</label><input type="text" class="fc" id="ie-sentence" value="${escapeHTML(r.sentence||'')}" placeholder="예: 정직 3개월"></div>
+      <div class="fg"><label class="flb">징계자명 *</label><input type="text" class="fc" id="ie-discipline-name" value="${escapeHTML(r.discipline_name||'')}" placeholder="이름"></div>
+      <div class="fg"><label class="flb">양형 *</label><input type="text" class="fc" id="ie-sentence" value="${escapeHTML(r.sentence||'')}" placeholder="예: 정직 3개월"></div>
       `:''}
       <div class="fg full"><label class="flb">비고</label><textarea class="fc" id="ie-note">${escapeHTML(r.note||'')}</textarea></div>
       <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">
@@ -2023,6 +2204,7 @@ function onIECat(){
   el.innerHTML='<option value="">없음</option>'+subs.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
   const catName=(allCats.find(c=>c.id==catId)||{}).name||'';
   fillViolationTypeSel('ie', catName);
+  toggleAmountField('ie', catName, '');
 }
 async function saveInline(id){
   const divId=document.getElementById('ie-div').value;
@@ -2041,8 +2223,14 @@ async function saveInline(id){
   const disciplineType=document.getElementById('ie-discipline-type')?.value||null;
   const disciplineName=document.getElementById('ie-discipline-name')?.value.trim()||null;
   const ieSentence=document.getElementById('ie-sentence')?.value.trim()||null;
+  const amountStrIE=document.getElementById('ie-amount')?.value ?? '';
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElIE && vtElIE.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
+  const catNameIE=(allCats.find(c=>c.id==catId)||{}).name||'';
+  if(catNameIE==='감사' && (!disciplineType||!disciplineName||!ieSentence)){showToast('감사 영역은 징계유형·징계자명·양형을 모두 입력해주세요');return;}
+  const amountNeededIE=catNameIE==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
+  if(amountNeededIE && amountStrIE===''){showToast('금액을 입력해주세요');return;}
+  const amountIE=amountNeededIE?parseInt(amountStrIE):null;
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('ie-save-btn');
   if(btn){btn.textContent='저장 중...'; btn.disabled=true;}
@@ -2055,7 +2243,8 @@ async function saveInline(id){
     violation_count:state==='모니터링'?null:cntVal,
     monitoring_count:state==='모니터링'?cntVal:null,
     violation_type:violationType||null,
-    discipline_type:disciplineType,discipline_name:disciplineName,sentence:ieSentence
+    discipline_type:disciplineType,discipline_name:disciplineName,sentence:ieSentence,
+    amount:amountIE
   }).eq('id',id);
   if(error){
     if(btn){btn.textContent='저장'; btn.disabled=false;}
@@ -2093,6 +2282,9 @@ function openEdit(id){
     document.getElementById('m-sub').value=r.risk_subcategories?.id||'';
     const vtEl=document.getElementById('m-violation-type');
     if(vtEl && r.violation_type) vtEl.value=r.violation_type;
+    const catName=(allCats.find(c=>c.id===r.risk_categories?.id)||{}).name||'';
+    toggleAmountField('m', catName, r.violation_type||'');
+    const maEl=document.getElementById('m-amount'); if(maEl) maEl.value=r.amount??'';
   },80);
   document.getElementById('m-date').value=r.registered_at||'';
   document.getElementById('m-title').value=r.title||'';
@@ -2136,6 +2328,7 @@ function onMCat(){
   fillViolationTypeSel('m', catName);
   renderStateButtons('m', catName);
   toggleAuditFields('m', catName);
+  toggleAmountField('m', catName, '');
 }
 async function saveModal(){
   const divId=document.getElementById('m-div').value;
@@ -2154,8 +2347,14 @@ async function saveModal(){
   const disciplineType=document.getElementById('m-discipline-type')?.value||null;
   const disciplineName=document.getElementById('m-discipline-name')?.value.trim()||null;
   const mSentence=document.getElementById('m-sentence')?.value.trim()||null;
+  const amountStrM=document.getElementById('m-amount')?.value ?? '';
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElM && vtElM.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
+  const catNameM=(allCats.find(c=>c.id==catId)||{}).name||'';
+  if(catNameM==='감사' && (!disciplineType||!disciplineName||!mSentence)){showToast('감사 영역은 징계유형·징계자명·양형을 모두 입력해주세요');return;}
+  const amountNeededM=catNameM==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
+  if(amountNeededM && amountStrM===''){showToast('금액을 입력해주세요');return;}
+  const amountM=amountNeededM?parseInt(amountStrM):null;
   const cntVal=parseInt(cnt);
   const btn=document.getElementById('save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
@@ -2168,7 +2367,8 @@ async function saveModal(){
     violation_count:state==='모니터링'?null:cntVal,
     monitoring_count:state==='모니터링'?cntVal:null,
     violation_type:violationType||null,
-    discipline_type:disciplineType,discipline_name:disciplineName,sentence:mSentence
+    discipline_type:disciplineType,discipline_name:disciplineName,sentence:mSentence,
+    amount:amountM
   }).eq('id',editId);
   btn.textContent='저장'; btn.disabled=false;
   if(error){showToast('저장 실패: '+error.message);return;}
@@ -2730,4 +2930,15 @@ function stateBadge(s){if(!s)return '-';return `<span class="bs bs-${stateClass(
 function fmtD(s){if(!s)return '-';return s.slice(2).replace(/-/g,'.');}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 
+// 대시보드가 실시간으로 갱신되는 것처럼 보이도록 KPI 카운트업 · 측정판 행 애니메이션을 주기적으로 재생
+function startLiveTicker(){
+  setInterval(()=>{
+    if(currentPage!=='dashboard') return;
+    _kpiAnimated=false;
+    renderKPI(getFiltered());
+    renderMatrix(getFiltered());
+  },10000);
+}
+
 init();
+startLiveTicker();
