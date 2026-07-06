@@ -24,10 +24,10 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: 소스 내려받기
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Node.js 준비
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
 
@@ -47,4 +47,4 @@ jobs:
 
       - name: 배포
         id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
