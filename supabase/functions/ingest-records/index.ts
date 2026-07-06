@@ -27,7 +27,7 @@
 //   - 외부노출: exposed(boolean, 전 영역 공통)를 external_exposure로 저장(컴플라이언스 분류 F등급 조건에 사용됨)
 //   - registered_at: date,  note: note,  title(필수): subtype
 //   - source_id: 상대 record.id (수정/삭제 때 짝을 찾기 위한 꼬리표)
-//   - (2026-06-09 추가) 재등장 차단: 등록 월이 2026-05 이전이면 동기화 제외 (아래 CUTOFF_YM)
+//   - (2026-07-06 밤 변경) 기준월 제외 규칙 제거 — 이제 등록 월과 무관하게 전 기간 동기화(전체 백필 대응)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -121,15 +121,8 @@ Deno.serve(async (req) => {
     const srcId = rec.id != null ? String(rec.id) : null;
     if (!srcId) return json({ error: "record.id 가 없습니다." }, 400);
 
-    // (재등장 차단, 2026-06-09) 등록 월이 기준월(2026-05) 이전이면 동기화하지 않음.
-    //   → 이미 삭제한 3~4월 옛 데이터를 원본에서 수정해도 다시 들어오지 않음. 기존 거울이 있으면 제거.
-    const CUTOFF_YM = "2026-05";
-    const _dm = String(rec.date ?? "").match(/(\d{4})[-./](\d{1,2})/);
-    const recYM = _dm ? `${_dm[1]}-${_dm[2].padStart(2, "0")}` : "";
-    if (recYM && recYM < CUTOFF_YM) {
-      await admin.from("risks").delete().eq("source_id", srcId);
-      return json({ ok: true, action: "skip", reason: `기준월(${CUTOFF_YM}) 이전 제외: ${recYM}` });
-    }
+    // (2026-07-06 밤 제거) 기준월 이전 제외 차단을 없앰 — 이제 전체 기간(3~4월 포함) 백필을 위해
+    // 등록 월과 무관하게 전부 동기화한다.
 
     // 3) 반영 대상 type 인지 확인. 아니면 (수정으로 type이 바뀐 경우 대비) 기존 거울 제거 후 건너뜀
     const category = TYPE_TO_CATEGORY[String(rec.type ?? "").trim()];
