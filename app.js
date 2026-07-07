@@ -298,7 +298,7 @@ async function init(){
   await loadMaster();
   await loadAll();
   await loadAreaNotes();
-  renderAreaNotesTable();
+  refreshAreaNotesViews();
   subscribeRealtime();   // 실시간 자동 갱신 시작
 }
 
@@ -1090,7 +1090,7 @@ function renderAuditKPI(risks){
     </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
   const pgnEl=document.getElementById('audit-pgn');
   if(pgnEl) pgnEl.innerHTML=buildPagination(auditPage,tp,page=>`auditPage=${page};renderAuditKPI(getFiltered())`);
-  renderAreaNotesTable();
+  renderAreaNotesDashboard();
 }
 
 // ── 영역별 특이사항 (데이터 입력 → 조치사항 판 하단 표시) ──────
@@ -1123,12 +1123,16 @@ async function saveAreaNote(){
   showToast('등록 완료!');
   resetAreaNote();
   await loadAreaNotes();
-  renderAreaNotesTable();
+  refreshAreaNotesViews();
 }
-function renderAreaNotesTable(){
+async function refreshAreaNotesViews(){
+  renderAreaNotesDashboard();
+  renderAreaNotesList();
+}
+// 메인뷰(대시보드) 조치사항 판 하단 — 조회 전용, 감사 KPI와 동일한 누적/지정월 기간을 공유
+function renderAreaNotesDashboard(){
   const tbody=document.getElementById('area-notes-body');
   if(!tbody) return;
-  // 감사 KPI 카드와 동일한 누적/지정월 기간 설정을 공유
   const mode=document.getElementById('audit-period-mode')?.value||'누적';
   const monthPick=document.getElementById('audit-month-pick');
   let notes=allAreaNotes;
@@ -1152,6 +1156,101 @@ function renderAreaNotesTable(){
       <td class="td-clip">${escapeHTML(n.action_text||'-')}</td>
     </tr>`;
   }).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+}
+
+// ── 모니터링 리스트 > 영역별 특이사항 탭 — 수정/삭제 가능 ──────
+let areaNoteEditId=null;
+let areaNotePage=1; const AREA_NOTE_PER=10;
+function renderAreaNotesList(){
+  const tbody=document.getElementById('area-notes-list-body');
+  if(!tbody) return;
+  const sorted=[...allAreaNotes].sort((a,b)=>(b.note_date||'').localeCompare(a.note_date||''));
+  const tp=Math.max(1,Math.ceil(sorted.length/AREA_NOTE_PER));
+  if(areaNotePage>tp) areaNotePage=1;
+  const slice=sorted.slice((areaNotePage-1)*AREA_NOTE_PER,areaNotePage*AREA_NOTE_PER);
+  let html='';
+  slice.forEach(n=>{
+    const brand=allBrands.find(b=>b.id===n.brand_id);
+    const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
+    const isEd=areaNoteEditId===n.id;
+    html+=`<tr class="${isEd?'ier-active':''}">
+      <td style="white-space:nowrap">${fmtD(n.note_date)}</td>
+      <td>${escapeHTML(brand?.name||'-')}${dv?` <span style="color:var(--text3)">(${escapeHTML(dv.name)})</span>`:''}</td>
+      <td>${escapeHTML(n.main_issue||'-')}</td>
+      <td class="td-clip">${escapeHTML(n.issue_detail||'-')}</td>
+      <td class="td-clip">${escapeHTML(n.action_text||'-')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="startAreaNoteEdit('${n.id}')">${isEd?'닫기':'수정'}</button>
+        <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="deleteAreaNote('${n.id}')">삭제</button>
+      </td>
+    </tr>`;
+    if(isEd) html+=buildAreaNoteEditRow(n);
+  });
+  tbody.innerHTML=slice.length?html:'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+  const pgnEl=document.getElementById('area-notes-pgn');
+  if(pgnEl) pgnEl.innerHTML=buildPagination(areaNotePage,tp,page=>`areaNotePage=${page};renderAreaNotesList()`);
+}
+function buildAreaNoteEditRow(n){
+  return `<tr class="ier-row"><td colspan="6">
+    <div class="ier-form">
+      <div class="fg"><label class="flb">날짜</label><input type="date" class="fc" id="ane-date" value="${n.note_date||''}"></div>
+      <div class="fg"><label class="flb">브랜드명 *</label><select class="fc" id="ane-brand">${allBrands.map(b=>{const dv=allDiv.find(d=>d.id===b.division_id);return `<option value="${b.id}" ${b.id===n.brand_id?'selected':''}>${dv?`${dv.name} - ${b.name}`:b.name}</option>`;}).join('')}</select></div>
+      <div class="fg full"><label class="flb">주요이슈 *</label><input type="text" class="fc" id="ane-main-issue" value="${escapeHTML(n.main_issue||'')}"></div>
+      <div class="fg full"><label class="flb">이슈상세</label><textarea class="fc" id="ane-issue-detail" rows="2">${escapeHTML(n.issue_detail||'')}</textarea></div>
+      <div class="fg full"><label class="flb">조치사항</label><textarea class="fc" id="ane-action" rows="2">${escapeHTML(n.action_text||'')}</textarea></div>
+      <div class="fg full" style="flex-direction:row;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="cancelAreaNoteEdit()">취소</button>
+        <button class="btn btn-red btn-sm" id="ane-save-btn" onclick="saveAreaNoteEdit('${n.id}')">저장</button>
+      </div>
+    </div>
+  </td></tr>`;
+}
+function startAreaNoteEdit(id){
+  areaNoteEditId=(areaNoteEditId===id)?null:id;
+  renderAreaNotesList();
+}
+function cancelAreaNoteEdit(){
+  areaNoteEditId=null;
+  renderAreaNotesList();
+}
+async function saveAreaNoteEdit(id){
+  const date=document.getElementById('ane-date').value||null;
+  const brandId=document.getElementById('ane-brand').value;
+  const mainIssue=document.getElementById('ane-main-issue').value.trim();
+  const detail=document.getElementById('ane-issue-detail').value.trim();
+  const action=document.getElementById('ane-action').value.trim();
+  if(!brandId||!mainIssue){ showToast('브랜드명과 주요이슈는 필수입니다'); return; }
+  const btn=document.getElementById('ane-save-btn');
+  btn.textContent='저장 중...'; btn.disabled=true;
+  const {error}=await sb.from('area_notes').update({
+    note_date:date, brand_id:parseInt(brandId), main_issue:mainIssue,
+    issue_detail:detail||null, action_text:action||null
+  }).eq('id',id);
+  if(error){ btn.textContent='저장'; btn.disabled=false; showToast('저장 실패: '+error.message); return; }
+  showToast('수정 완료!');
+  areaNoteEditId=null;
+  await loadAreaNotes();
+  refreshAreaNotesViews();
+}
+async function deleteAreaNote(id){
+  if(!confirm('이 특이사항을 삭제하시겠습니까?')) return;
+  const {error}=await sb.from('area_notes').delete().eq('id',id);
+  if(error){ showToast('삭제 실패: '+error.message); return; }
+  showToast('삭제 완료');
+  if(areaNoteEditId===id) areaNoteEditId=null;
+  await loadAreaNotes();
+  refreshAreaNotesViews();
+}
+
+// ── 모니터링 리스트 페이지 내 탭 전환 ──────
+let listTab='mon';
+function setListTab(tab){
+  listTab=tab;
+  document.getElementById('lst-tab-mon-btn').classList.toggle('btn-red',tab==='mon');
+  document.getElementById('lst-tab-note-btn').classList.toggle('btn-red',tab==='note');
+  document.getElementById('list-tab-mon').style.display=tab==='mon'?'':'none';
+  document.getElementById('list-tab-note').style.display=tab==='note'?'':'none';
+  if(tab==='mon') renderList(); else renderAreaNotesList();
 }
 
 // ── 위험도별 분류 ──────────────────────────
@@ -1439,7 +1538,7 @@ function showPage(name,btn){
   const fbar=document.getElementById('main-fbar');
   if(fbar) fbar.style.display=(name==='dashboard')?'':'none';
   if(name==='dashboard') updateFbarSelects();
-  if(name==='list') renderList();
+  if(name==='list') setListTab(listTab);
   if(name==='input') renderRecentBody();
   if(name==='admin') renderAdmin();
 }

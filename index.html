@@ -443,43 +443,66 @@
 
   <!-- ════ 모니터링 리스트 ════ -->
   <div class="content page" id="page-list">
-    <div class="fbar" style="border:none;padding:0 0 14px;background:transparent">
-      <span class="fbar-label">필터</span>
-      <select id="lf-div" onchange="onLfDivChange()"><option value="">전체 계열사</option></select>
-      <select id="lf-brand" onchange="renderList()"><option value="">전체 브랜드/조직</option></select>
-      <select id="lf-cat" onchange="onLfCatChange()"><option value="">전체 영역 대분류</option></select>
-      <select id="lf-sub" onchange="renderList()"><option value="">전체 영역 중분류</option></select>
-      <select id="lf-grade" onchange="renderList()">
-        <option value="">전체 등급</option>
-        <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
-      </select>
-      <select id="lf-state" onchange="renderList()">
-        <option value="">전체 상태</option>
-        <option value="모니터링">모니터링</option><option value="위반">위반</option><option value="완료">완료</option>
-      </select>
+    <div class="lst-tabs" style="display:flex;gap:6px;margin-bottom:14px">
+      <button class="btn btn-red btn-sm" id="lst-tab-mon-btn" onclick="setListTab('mon')">모니터링 입력값</button>
+      <button class="btn btn-sm" id="lst-tab-note-btn" onclick="setListTab('note')">영역별 특이사항</button>
     </div>
-    <div class="card">
-      <div class="card-hd">
-        <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl" id="list-label">모니터링 리스트</span></div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-sm" onclick="exportCSV()">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV
-          </button>
-          <button class="btn btn-red btn-sm" onclick="showPage('input',null)">+ 데이터 입력</button>
+
+    <div id="list-tab-mon">
+      <div class="fbar" style="border:none;padding:0 0 14px;background:transparent">
+        <span class="fbar-label">필터</span>
+        <select id="lf-div" onchange="onLfDivChange()"><option value="">전체 계열사</option></select>
+        <select id="lf-brand" onchange="renderList()"><option value="">전체 브랜드/조직</option></select>
+        <select id="lf-cat" onchange="onLfCatChange()"><option value="">전체 영역 대분류</option></select>
+        <select id="lf-sub" onchange="renderList()"><option value="">전체 영역 중분류</option></select>
+        <select id="lf-grade" onchange="renderList()">
+          <option value="">전체 등급</option>
+          <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+        </select>
+        <select id="lf-state" onchange="renderList()">
+          <option value="">전체 상태</option>
+          <option value="모니터링">모니터링</option><option value="위반">위반</option><option value="완료">완료</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl" id="list-label">모니터링 리스트</span></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="exportCSV()">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV
+            </button>
+            <button class="btn btn-red btn-sm" onclick="showPage('input',null)">+ 데이터 입력</button>
+          </div>
         </div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:860px">
+            <thead><tr>
+              <th>등록일</th><th>계열사</th><th>브랜드/조직</th>
+              <th>영역 대분류</th><th>영역 중분류</th><th>리스크명</th>
+              <th>상태</th><th>건수</th>
+              <th>조치사항</th><th>비고</th><th></th>
+            </tr></thead>
+            <tbody id="list-body"></tbody>
+          </table>
+        </div>
+        <div class="pgn" id="pgn"></div>
       </div>
-      <div style="overflow-x:auto">
-        <table class="tbl" style="min-width:860px">
-          <thead><tr>
-            <th>등록일</th><th>계열사</th><th>브랜드/조직</th>
-            <th>영역 대분류</th><th>영역 중분류</th><th>리스크명</th>
-            <th>상태</th><th>건수</th>
-            <th>조치사항</th><th>비고</th><th></th>
-          </tr></thead>
-          <tbody id="list-body"></tbody>
-        </table>
+    </div>
+
+    <div id="list-tab-note" style="display:none">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-left"><div class="card-ttl-bar"></div><span class="card-ttl">영역별 특이사항</span></div>
+          <button class="btn btn-red btn-sm" onclick="showPage('input',null)">+ 특이사항 입력</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:760px">
+            <thead><tr><th>날짜</th><th>브랜드명</th><th>주요이슈</th><th>이슈상세</th><th>조치사항</th><th>관리</th></tr></thead>
+            <tbody id="area-notes-list-body"></tbody>
+          </table>
+        </div>
+        <div class="pgn" id="area-notes-pgn"></div>
       </div>
-      <div class="pgn" id="pgn"></div>
     </div>
   </div>
 
