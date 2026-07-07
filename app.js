@@ -821,6 +821,7 @@ function renderKPI(risks){
   setBar('k-mon-bar',monRate); setText('k-mon-rate',monRate+'%');
   // 회수금액
   setText('k-recovery-amt',fmtWon(recovery));
+  setText('k-recovery-occurred',fmtWon(occurredAmt));
   setBar('k-recovery-bar',recoveryRate); setText('k-recovery-rate',recoveryRate+'%');
   // 현재
   animCount('k-cur-act',curAct);
@@ -976,8 +977,8 @@ function renderMatrix(risks){
         return d>=start && d<=cutoff;
       });
       if(!items.length) return {grade:null,num:0,den:0};
-      // 분수는 위반(위반+완료)/전체 건수의 월평균(등급 산정 기준과 일치시킴). 당월 모드는 months=1이라 원래 건수 그대로.
-      const den=Math.round(sumCnt(items)/months), num=Math.round(sumViol(items)/months);
+      // 분수(위반/전체)는 누적 건수 그대로 표시. 등급 산정만 월평균 기준(아래 calcCategoryGrade)을 유지.
+      const den=sumCnt(items), num=sumViol(items);
       const grade = ent.brand ? calcCategoryGrade(cat.name, items, months) : (items[0].grade||null);
       return {grade, num, den};
     });
