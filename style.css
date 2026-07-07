@@ -166,7 +166,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kpi-section{margin-bottom:16px}
 .kpi-section-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .kpi-section-ttl{font-size:13px;font-weight:700;color:var(--text)}
-.audit-sub-ttl{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
 .kpi-row{display:grid;gap:10px;margin-bottom:10px}
 .kpi-col{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 

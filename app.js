@@ -1074,26 +1074,28 @@ function renderAuditKPI(risks){
 
   // 조치사항 판: 감사 영역 입력값을 최근순으로 나열(5행씩 페이지)
   const tbody=document.getElementById('audit-action-body');
-  if(!tbody) return;
-  const sorted=sortByRecent(auditRows);
-  const tp=Math.max(1,Math.ceil(sorted.length/AUDIT_PER));
-  if(auditPage>tp) auditPage=1;
-  const slice=sorted.slice((auditPage-1)*AUDIT_PER,auditPage*AUDIT_PER);
-  tbody.innerHTML=slice.length?slice.map(r=>`
-    <tr onclick="openEdit('${r.id}')" style="cursor:pointer">
-      <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
-      <td>${r.divisions?.name||'-'}</td>
-      <td>${escapeHTML(r.title||'-')}</td>
-      <td>${escapeHTML(r.sentence||'-')}</td>
-      <td>${escapeHTML(r.discipline_name||'-')}</td>
-      <td class="td-clip">${escapeHTML(r.note||'-')}</td>
-    </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
-  const pgnEl=document.getElementById('audit-pgn');
-  if(pgnEl) pgnEl.innerHTML=buildPagination(auditPage,tp,page=>`auditPage=${page};renderAuditKPI(getFiltered())`);
+  if(tbody){
+    const sorted=sortByRecent(auditRows);
+    const tp=Math.max(1,Math.ceil(sorted.length/AUDIT_PER));
+    if(auditPage>tp) auditPage=1;
+    const slice=sorted.slice((auditPage-1)*AUDIT_PER,auditPage*AUDIT_PER);
+    tbody.innerHTML=slice.length?slice.map(r=>`
+      <tr onclick="openEdit('${r.id}')" style="cursor:pointer">
+        <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
+        <td>${r.divisions?.name||'-'}</td>
+        <td>${escapeHTML(r.title||'-')}</td>
+        <td>${escapeHTML(r.sentence||'-')}</td>
+        <td>${escapeHTML(r.discipline_name||'-')}</td>
+        <td class="td-clip">${escapeHTML(r.note||'-')}</td>
+      </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+    const pgnEl=document.getElementById('audit-pgn');
+    if(pgnEl) pgnEl.innerHTML=buildPagination(auditPage,tp,page=>`auditPage=${page};renderAuditKPI(getFiltered())`);
+  }
+
   renderAreaNotesDashboard();
 }
 
-// ── 영역별 특이사항 (데이터 입력 → 조치사항 판 하단 표시) ──────
+// ── 영역별 특이사항 (데이터 입력 → 리스크 노출/측정판 바로 아래 카드에 표시) ──────
 let allAreaNotes=[];
 async function loadAreaNotes(){
   const {data,error}=await sb.from('area_notes').select('*').order('note_date',{ascending:false});
@@ -1129,7 +1131,7 @@ async function refreshAreaNotesViews(){
   renderAreaNotesDashboard();
   renderAreaNotesList();
 }
-// 메인뷰(대시보드) 조치사항 판 하단 — 조회 전용, 감사 KPI와 동일한 누적/지정월 기간을 공유
+// 메인뷰(대시보드) 영역별 특이사항 카드 — 조회 전용, 감사 KPI와 동일한 누적/지정월 기간을 공유
 function renderAreaNotesDashboard(){
   const tbody=document.getElementById('area-notes-body');
   if(!tbody) return;
