@@ -136,12 +136,17 @@ function pctRate(num,den){
   return (r>=100 && num<den) ? 99 : r;
 }
 // 반올림 없이 소수점까지 그대로 보여주는 비율(내림 처리라 실제 값보다 커 보이는 일이 없음)
+// 분모가 아주 큰 경우(예: 모니터링 5만건대) 기본 소수 1자리로는 0.0%로 뭉개질 수 있어,
+// 실제 값이 0보다 크면 자리수를 최대 4자리까지 늘려 진짜 값이 보이게 한다.
 function pctRateExact(num,den,decimals=1){
   if(den<=0) return '0';
   if(num>=den) return (100).toFixed(decimals);
-  const factor=Math.pow(10,decimals);
-  const truncated=Math.floor(num/den*100*factor)/factor;
-  return truncated.toFixed(decimals);
+  const raw=num/den*100;
+  let d=decimals;
+  while(num>0 && d<4 && Math.floor(raw*Math.pow(10,d))===0) d++;
+  const factor=Math.pow(10,d);
+  const truncated=Math.floor(raw*factor)/factor;
+  return truncated.toFixed(d);
 }
 
 // ── 인증 게이트 ────────────────────────────
@@ -793,9 +798,11 @@ function renderKPI(risks){
   risks=risks.filter(r=>r.risk_categories?.name!=='감사' && r.risk_categories?.name!=='부실채권');
 
   // 누적: 위반(위반+완료) / 모니터링(전체) — 입력 건수 합계 기준
+  // 표시는 소수점까지 정확히(반올림으로 0%가 되어 실제 위반이 안 보이는 일이 없도록), 막대 너비만 정수 비율 사용
   const accViol=sumViol(risks);
   const accMon=sumCnt(risks);
   const accRate=pctRate(accViol,accMon);
+  const accRateText=pctRateExact(accViol,accMon);
 
   // 당월
   const thisMonth=risks.filter(r=>{
@@ -806,6 +813,7 @@ function renderKPI(risks){
   const monViol=sumViol(thisMonth);
   const monMon=sumCnt(thisMonth);
   const monRate=pctRate(monViol,monMon);
+  const monRateText=pctRateExact(monViol,monMon);
 
   // 현재: 조치중(위반계열) + 처리완료율(완료계열/(위반+완료))
   const curAct=sumViol(risks.filter(r=>isViolState(r.item_state)));
@@ -815,10 +823,10 @@ function renderKPI(risks){
 
   // 누적
   animCount('k-acc-viol',accViol); animCount('k-acc-mon',accMon);
-  setBar('k-acc-bar',accRate); setText('k-acc-rate',accRate+'%');
+  setBar('k-acc-bar',accRate); setText('k-acc-rate',accRateText+'%');
   // 당월
   animCount('k-mon-viol',monViol); animCount('k-mon-mon',monMon);
-  setBar('k-mon-bar',monRate); setText('k-mon-rate',monRate+'%');
+  setBar('k-mon-bar',monRate); setText('k-mon-rate',monRateText+'%');
   // 회수금액
   setText('k-recovery-amt',fmtWon(recovery));
   setText('k-recovery-occurred',fmtWon(occurredAmt));
