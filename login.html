@@ -180,6 +180,9 @@ body::after{
           <label class="lbl">비밀번호</label>
           <input type="password" class="input" id="li-pw" autocomplete="current-password" placeholder="••••••••" required>
         </div>
+        <div style="text-align:right;margin-top:-4px">
+          <a href="javascript:void(0)" onclick="showForgot()" style="font-size:11px;color:var(--text3);text-decoration:none">비밀번호를 잊으셨나요?</a>
+        </div>
         <button type="submit" class="btn-primary" id="btn-login">로그인</button>
         <div class="msg" id="msg-login"></div>
       </form>
@@ -251,6 +254,57 @@ body::after{
       </div>
     </div>
 
+    <!-- 비밀번호 찾기: 이메일 입력 → 재설정 링크 발송 -->
+    <div id="forgot-area" style="display:none">
+      <div class="header" style="margin-bottom:6px">
+        <div class="logo-circle" role="img" aria-label="E·LAND"></div>
+        <div class="header-txt">
+          <div class="header-brand">이랜드그룹 리스크 관리 시스템</div>
+          <div class="header-sub">Risk Monitoring &amp; Analytics Platform</div>
+        </div>
+      </div>
+      <div class="intro" style="margin-top:18px">
+        가입하신 <b>이메일 주소</b>를 입력하시면 비밀번호 재설정 링크를 보내드립니다.
+      </div>
+      <form id="form-forgot" onsubmit="event.preventDefault();doForgot()">
+        <div class="field">
+          <label class="lbl">이메일</label>
+          <input type="email" class="input" id="fp-email" autocomplete="username" placeholder="name@eland.co.kr" required>
+        </div>
+        <button type="submit" class="btn-primary" id="btn-forgot">재설정 링크 보내기</button>
+        <div class="msg" id="msg-forgot"></div>
+      </form>
+      <div class="foot" style="border-top:none;padding-top:0">
+        <a href="javascript:void(0)" onclick="backToLoginFromForgot()" style="color:var(--red);font-weight:700;text-decoration:none">로그인 화면으로 돌아가기</a>
+      </div>
+    </div>
+
+    <!-- 이메일 재설정 링크로 진입 시: 새 비밀번호 설정 -->
+    <div id="reset-area" style="display:none">
+      <div class="header" style="margin-bottom:6px">
+        <div class="logo-circle" role="img" aria-label="E·LAND"></div>
+        <div class="header-txt">
+          <div class="header-brand">이랜드그룹 리스크 관리 시스템</div>
+          <div class="header-sub">Risk Monitoring &amp; Analytics Platform</div>
+        </div>
+      </div>
+      <div class="intro" style="margin-top:18px">
+        새 비밀번호를 설정해주세요.
+      </div>
+      <form id="form-reset" onsubmit="event.preventDefault();doResetPassword()">
+        <div class="field">
+          <label class="lbl">새 비밀번호 * <span style="font-weight:400;color:var(--text3)">(8자 이상, 영문+숫자)</span></label>
+          <input type="password" class="input" id="rp-pw" autocomplete="new-password" minlength="8" required>
+        </div>
+        <div class="field">
+          <label class="lbl">새 비밀번호 확인 *</label>
+          <input type="password" class="input" id="rp-pw2" autocomplete="new-password" minlength="8" required>
+        </div>
+        <button type="submit" class="btn-primary" id="btn-reset">비밀번호 변경</button>
+        <div class="msg" id="msg-reset"></div>
+      </form>
+    </div>
+
   </div>
 </div>
 
@@ -271,14 +325,28 @@ if(params.get('expired')==='1'){
   if(el){ el.className='msg err'; el.textContent='보안을 위해 3시간이 지나 자동 로그아웃되었습니다. 다시 로그인해 주세요.'; }
 }
 
+// 비밀번호 재설정 이메일 링크로 들어온 경우(#access_token=...&type=recovery) 자동 로그인 리다이렉트를 건너뜀
+const isRecoveryFlow = location.hash.includes('type=recovery');
+
 // 이미 로그인된 상태로 들어왔다면 자동 진입(승인 확인 후)
 (async()=>{
+  if(isRecoveryFlow) return;
   const {data:{session}} = await sb.auth.getSession();
   if(session){
     const ok=await checkApprovedAndGo(session.user);
     if(!ok){ /* 머무름 */ }
   }
 })();
+
+// 재설정 링크 진입 시 Supabase가 세션을 복구하며 이 이벤트를 발생시킴 → 새 비밀번호 설정 화면 표시
+sb.auth.onAuthStateChange((event)=>{
+  if(event==='PASSWORD_RECOVERY'){
+    document.getElementById('auth-area').style.display='none';
+    document.getElementById('pending-area').style.display='none';
+    document.getElementById('forgot-area').style.display='none';
+    document.getElementById('reset-area').style.display='';
+  }
+});
 
 function switchTab(which){
   const isLogin=which==='login';
@@ -310,6 +378,56 @@ function backToLogin(){
     document.getElementById('pending-area').style.display='none';
     document.getElementById('auth-area').style.display='';
   });
+}
+
+function showForgot(){
+  document.getElementById('auth-area').style.display='none';
+  document.getElementById('forgot-area').style.display='';
+  hideMsg('msg-forgot');
+}
+function backToLoginFromForgot(){
+  document.getElementById('forgot-area').style.display='none';
+  document.getElementById('auth-area').style.display='';
+}
+
+async function doForgot(){
+  const email=val('fp-email');
+  const btn=document.getElementById('btn-forgot');
+  btn.disabled=true; btn.textContent='전송 중...';
+  hideMsg('msg-forgot');
+  const redirectTo=location.origin+location.pathname;
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo});
+  btn.disabled=false; btn.textContent='재설정 링크 보내기';
+  if(error){
+    showMsg('msg-forgot','err','전송 실패: '+error.message);
+    return;
+  }
+  showMsg('msg-forgot','ok','재설정 링크를 이메일로 보냈습니다. 메일함(스팸함 포함)을 확인해주세요.');
+}
+
+async function doResetPassword(){
+  const pw=val('rp-pw'), pw2=val('rp-pw2');
+  if(pw!==pw2){ showMsg('msg-reset','err','비밀번호가 일치하지 않습니다.'); return; }
+  if(pw.length<8 || !/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)){
+    showMsg('msg-reset','err','비밀번호는 8자 이상이며 영문과 숫자를 모두 포함해야 합니다.'); return;
+  }
+  const btn=document.getElementById('btn-reset');
+  btn.disabled=true; btn.textContent='변경 중...';
+  hideMsg('msg-reset');
+  const {error}=await sb.auth.updateUser({password:pw});
+  btn.disabled=false; btn.textContent='비밀번호 변경';
+  if(error){
+    showMsg('msg-reset','err','변경 실패: '+error.message);
+    return;
+  }
+  showMsg('msg-reset','ok','비밀번호가 변경되었습니다. 다시 로그인해주세요.');
+  await sb.auth.signOut();
+  setTimeout(()=>{
+    history.replaceState(null,'',location.pathname);
+    document.getElementById('reset-area').style.display='none';
+    document.getElementById('auth-area').style.display='';
+    switchTab('login');
+  },1800);
 }
 
 async function doSignup(){
