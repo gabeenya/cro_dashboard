@@ -1954,7 +1954,7 @@ async function saveInput(){
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 모두 입력해주세요 (건수 포함)');return;}
   if(vtElP && vtElP.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const catNameP=(allCats.find(c=>c.id==catId)||{}).name||'';
-  if(catNameP==='감사' && (!disciplineType||!disciplineName||!sentence)){showToast('감사 영역은 징계유형·징계자명·양형을 모두 입력해주세요');return;}
+  if(catNameP==='감사' && (!disciplineType||!disciplineName||!sentence)){showToast('감사 영역은 징계유형·대상자·양형/처분을 모두 입력해주세요');return;}
   const amountNeededP=catNameP==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
   if(amountNeededP && amountStr===''){showToast('금액을 입력해주세요');return;}
   const amount=amountNeededP?parseInt(amountStr):null;
@@ -1993,7 +1993,7 @@ function sanitizeName(s){
   return String(s).replace(/[^\w가-힣]/g,'_');
 }
 const DISCIPLINE_TYPES=['금전회수','경징계','중징계','형사고발'];
-// 조치구분/이름·양형/조치내용을 하나의 조치사항 텍스트로 합성
+// 조치구분/대상자·양형/처분/조치내용을 하나의 조치사항 텍스트로 합성
 function buildActionStatus(actType, entries, other){
   if(actType==='징계'){
     const names=(entries||[]).filter(e=>e.name).map(e=>e.penalty?`${e.name}(${e.penalty})`:e.name);
@@ -2024,8 +2024,8 @@ async function downloadBulkTemplate(){
     {header:'상태 *',key:'state',width:12},
     {header:'건수 *',key:'cnt',width:10},
     {header:'조치구분(징계/징계 외)',key:'actType',width:22},
-    {header:'이름(징계 시)',key:'actName',width:16},
-    {header:'양형(징계 시)',key:'actPen',width:18},
+    {header:'대상자(징계 시)',key:'actName',width:16},
+    {header:'양형/처분(징계 시)',key:'actPen',width:18},
     {header:'조치내용(징계 외 시)',key:'actOther',width:30},
     {header:'위반유형',key:'vtype',width:26},
     {header:'금액(부실채권 미입금/부실채권 시 필수)',key:'amount',width:32},
@@ -2079,10 +2079,17 @@ async function downloadBulkTemplate(){
     wb.definedNames.add(`_참조!$${L}$2:$${L}$${subs.length+1}`,`_s_${sanitizeName(cat.name)}`);
     col++;
   });
-  // 영역 대분류별 위반유형 목록(그룹 구분 없이 평탄화)
+  // 영역 대분류별 위반유형 목록(그룹 구분 없이 평탄화). 위반유형이 없는 대분류(예: IP)는
+  // 빈 칸 하나를 가리키는 이름을 만들어준다 — 그래야 INDIRECT가 참조 오류 없이 빈 목록으로 뜬다.
+  const blankL=colToLetter(col); col++;
+  ref.getCell(`${blankL}1`).value='__빈값__';
+  const blankRange=`_참조!$${blankL}$2:$${blankL}$2`;
   allCats.forEach(cat=>{
     const types=flatViolationTypes(cat.name);
-    if(types.length===0) return;
+    if(types.length===0){
+      wb.definedNames.add(blankRange,`_v_${sanitizeName(cat.name)}`);
+      return;
+    }
     const L=colToLetter(col);
     ref.getCell(`${L}1`).value=cat.name;
     types.forEach((t,i)=>{ ref.getCell(`${L}${i+2}`).value=t; });
@@ -2116,18 +2123,26 @@ async function downloadBulkTemplate(){
   }
 
   // 3) 입력 시트에 데이터 검증 적용 (행 2 ~ 501)
+  // 주의: 계열사/대분류/조치구분/징계유형/외부노출처럼 모든 행에 동일한 목록이 적용되는 컬럼은
+  // 반드시 worksheet.dataValidations.add()로 "범위 전체"에 한 번만 등록해야 한다.
+  // 셀 단위로 500번 반복 설정(cell.dataValidation=...)하면 ExcelJS가 내부적으로
+  // 주소를 문자열 순으로 정렬해 인접 범위를 병합하는 과정에서(행이 10 이상일 때) 겹치는 두 개의
+  // sqref 범위를 만들어내는 버그가 있고, 이 중복/중첩 범위는 실제 Excel에서 파일 손상으로 인식되어
+  // 열 때 "복구" 후 해당 시트의 데이터 유효성 검사가 통째로 사라지는 원인이 된다(= 모든 값이 다 나오는 것처럼 보임).
+  // 또한 formulae 문자열 앞에 '=' 를 붙이면 안 된다(수식 텍스트 자체에 '='가 들어가 깨짐).
   const ROWS=500;
+  const lastR=ROWS+1;
+  ws.dataValidations.add(`B2:B${lastR}`, {type:'list',allowBlank:true,formulae:['_divs'],showErrorMessage:true,errorTitle:'잘못된 값',error:'드롭다운에서 선택하세요.'});
+  ws.dataValidations.add(`D2:D${lastR}`, {type:'list',allowBlank:true,formulae:['_cats']});
+  ws.dataValidations.add(`I2:I${lastR}`, {type:'list',allowBlank:true,formulae:['_actions']});
+  ws.dataValidations.add(`O2:O${lastR}`, {type:'list',allowBlank:true,formulae:['_disctypes']});
+  ws.dataValidations.add(`P2:P${lastR}`, {type:'list',allowBlank:true,formulae:['_external']});
   for(let r=2; r<=ROWS+1; r++){
     ws.getCell(`A${r}`).numFmt='yyyy-mm-dd';
-    ws.getCell(`B${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_divs'],showErrorMessage:true,errorTitle:'잘못된 값',error:'드롭다운에서 선택하세요.'};
-    ws.getCell(`C${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_b_"&SUBSTITUTE(B${r}," ","_"))`]};
-    ws.getCell(`D${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_cats']};
-    ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
-    ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_st_"&SUBSTITUTE(D${r}," ","_"))`]};
-    ws.getCell(`I${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_actions']};
-    ws.getCell(`M${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`=INDIRECT("_v_"&SUBSTITUTE(D${r}," ","_"))`]};
-    ws.getCell(`O${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_disctypes']};
-    ws.getCell(`P${r}`).dataValidation={type:'list',allowBlank:true,formulae:['=_external']};
+    ws.getCell(`C${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_b_"&SUBSTITUTE(B${r}," ","_"))`]};
+    ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
+    ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_st_"&SUBSTITUTE(D${r}," ","_"))`]};
+    ws.getCell(`M${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_v_"&SUBSTITUTE(D${r}," ","_"))`]};
   }
 
   // 4) 안내 시트
@@ -2139,11 +2154,12 @@ async function downloadBulkTemplate(){
     '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
     '2. 별표(*) 표시 컬럼은 필수입니다. (건수 포함)',
     '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분 / 위반유형 / 징계유형은 드롭다운에서 선택하세요.',
-    '4. 브랜드는 계열사를, 영역 중분류·위반유형·상태는 영역 대분류를 먼저 선택하면 자동 필터됩니다.',
+    '4. 브랜드는 계열사를, 영역 중분류·위반유형·상태는 영역 대분류를 먼저 선택하면 자동 필터됩니다(대분류를 먼저 선택하지 않으면 목록이 비어 있습니다).',
+    '4-1. 위반유형은 영역 대분류에 목록이 있으면 필수입니다. 단 \'IP\'는 위반유형 목록이 없어 선택하지 않습니다(공란으로 두세요).',
     '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
     '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링/발생/적발이면 모니터링 건수, 위반/완료/해결/조치완료면 위반 건수로 집계)',
     '6-1. 상태 옵션은 영역마다 다릅니다 — 부실채권: 발생/해결, 감사: 적발/조치완료, 중대재해: 발생/조치완료, 그 외 영역: 모니터링/위반/완료.',
-    '7. 영역 대분류가 \'감사\'이면 징계유형·징계자명(이름)·양형이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
+    '7. 영역 대분류가 \'감사\'이면 징계유형·대상자·양형/처분이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
     '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'부실채권\'이면 금액이 필수입니다.',
     '9. 외부노출 여부: 해당 건이 외부에 노출됐으면 O를 입력하세요(공란=미노출). 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP)에서는 이 값이 F등급 산정에 사용됩니다.',
     '10. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
@@ -2196,7 +2212,7 @@ async function handleBulkUpload(ev){
       else if(t.startsWith('상태')) colMap.state=colNumber;
       else if(t.startsWith('건수')) colMap.cnt=colNumber;
       else if(t.startsWith('조치구분')) colMap.actType=colNumber;
-      else if(t.startsWith('이름')) colMap.actName=colNumber;
+      else if(t.startsWith('대상자')) colMap.actName=colNumber;
       else if(t.startsWith('양형')) colMap.actPen=colNumber;
       else if(t.startsWith('조치내용')) colMap.actOther=colNumber;
       else if(t.startsWith('위반유형')) colMap.vtype=colNumber;
@@ -2285,14 +2301,19 @@ async function handleBulkUpload(ev){
       // 조치구분(선택) — 값이 있으면 징계/징계 외만 허용
       if(actType&&!['징계','징계 외'].includes(actType)) errs.push("조치구분은 '징계' 또는 '징계 외'");
 
-      // 감사 영역: 징계유형·이름·양형 모두 필수
-      if(catObj?.name==='감사' && (!discType||!actName||!actPen)) errs.push('감사 영역은 징계유형·징계자명·양형을 모두 입력해야 함');
+      // 감사 영역: 징계유형·대상자·양형/처분 모두 필수
+      if(catObj?.name==='감사' && (!discType||!actName||!actPen)) errs.push('감사 영역은 징계유형·대상자·양형/처분을 모두 입력해야 함');
       if(discType && !DISCIPLINE_TYPES.includes(discType)) errs.push('징계유형은 금전회수/경징계/중징계/형사고발 중 하나');
 
-      // 위반유형(선택) — 값이 있으면 해당 영역 대분류에 속하는지 검증
-      if(vtype && catObj){
+      // 위반유형 — 해당 영역 대분류에 목록이 있으면 필수(단일 입력 화면과 동일), IP처럼 목록이 없으면 선택 자체가 없어야 함
+      if(catObj){
         const allowed=flatViolationTypes(catObj.name);
-        if(allowed.length && !allowed.includes(vtype)) errs.push(`위반유형 '${vtype}'는 '${catName}'에 속하지 않음`);
+        if(allowed.length){
+          if(!vtype) errs.push('위반유형을 선택해야 함');
+          else if(!allowed.includes(vtype)) errs.push(`위반유형 '${vtype}'는 '${catName}'에 속하지 않음`);
+        } else if(vtype){
+          errs.push(`'${catName}' 영역은 위반유형을 선택하지 않음`);
+        }
       }
 
       // 금액 — 부실채권 + 미입금/부실채권이면 필수
@@ -2500,8 +2521,8 @@ function buildInlineEditRow(r){
         <option value="">선택 안 함</option>
         ${['금전회수','경징계','중징계','형사고발'].map(v=>`<option value="${v}"${r.discipline_type===v?' selected':''}>${v}</option>`).join('')}
       </select></div>
-      <div class="fg"><label class="flb">징계자명 *</label><input type="text" class="fc" id="ie-discipline-name" value="${escapeHTML(r.discipline_name||'')}" placeholder="이름"></div>
-      <div class="fg"><label class="flb">양형 *</label><input type="text" class="fc" id="ie-sentence" value="${escapeHTML(r.sentence||'')}" placeholder="예: 정직 3개월"></div>
+      <div class="fg"><label class="flb">대상자 *</label><input type="text" class="fc" id="ie-discipline-name" value="${escapeHTML(r.discipline_name||'')}" placeholder="이름"></div>
+      <div class="fg"><label class="flb">양형/처분 *</label><input type="text" class="fc" id="ie-sentence" value="${escapeHTML(r.sentence||'')}" placeholder="예: 정직 3개월"></div>
       `:''}
       <div class="fg"><label class="flb">외부노출 여부</label>
         <label class="chk-inline"><input type="checkbox" id="ie-external" ${r.external_exposure?'checked':''}> 외부에 노출됨</label>
@@ -2581,7 +2602,7 @@ async function saveInline(id){
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElIE && vtElIE.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const catNameIE=(allCats.find(c=>c.id==catId)||{}).name||'';
-  if(catNameIE==='감사' && (!disciplineType||!disciplineName||!ieSentence)){showToast('감사 영역은 징계유형·징계자명·양형을 모두 입력해주세요');return;}
+  if(catNameIE==='감사' && (!disciplineType||!disciplineName||!ieSentence)){showToast('감사 영역은 징계유형·대상자·양형/처분을 모두 입력해주세요');return;}
   const amountNeededIE=catNameIE==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
   if(amountNeededIE && amountStrIE===''){showToast('금액을 입력해주세요');return;}
   const amountIE=amountNeededIE?parseInt(amountStrIE):null;
@@ -2707,7 +2728,7 @@ async function saveModal(){
   if(!divId||!catId||!state||!date||!title||cnt===''){showToast('필수 항목(*)을 입력해주세요 (건수 포함)');return;}
   if(vtElM && vtElM.options.length>1 && !violationType){showToast('위반유형을 선택해주세요');return;}
   const catNameM=(allCats.find(c=>c.id==catId)||{}).name||'';
-  if(catNameM==='감사' && (!disciplineType||!disciplineName||!mSentence)){showToast('감사 영역은 징계유형·징계자명·양형을 모두 입력해주세요');return;}
+  if(catNameM==='감사' && (!disciplineType||!disciplineName||!mSentence)){showToast('감사 영역은 징계유형·대상자·양형/처분을 모두 입력해주세요');return;}
   const amountNeededM=catNameM==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
   if(amountNeededM && amountStrM===''){showToast('금액을 입력해주세요');return;}
   const amountM=amountNeededM?parseInt(amountStrM):null;
@@ -2976,7 +2997,7 @@ async function downloadPPT(){
   const disc=prevRisks.filter(r=>r.risk_categories?.name==='감사'&&r.discipline_name);
   const slB=pptx.addSlide(); head(slB,'주요 위험영역 및 조치 현황 (2) — 징계 조치 현황',`${prevLabel} · 감사 영역 징계 건`);
   {
-    const hdr=['계열사','브랜드/조직','리스크명','징계자명','양형','등록일'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:(i>=3&&i<=4)?'center':'left',valign:'middle',fontSize:10}}));
+    const hdr=['계열사','브랜드/조직','리스크명','대상자','양형/처분','등록일'].map((t,i)=>({text:t,options:{bold:true,color:'FFFFFF',fill:RPT.NAVY,align:(i>=3&&i<=4)?'center':'left',valign:'middle',fontSize:10}}));
     const rows=[hdr];
     disc.slice(0,9).forEach((r,i)=>{
       const fill=i%2?RPT.BG:RPT.SURF;

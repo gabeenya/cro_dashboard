@@ -63,7 +63,10 @@
       "Bash(curl *)",
       "Read(//tmp/**)",
       "Bash(node *)",
-      "Bash(npm -v)"
+      "Bash(npm -v)",
+      "Bash(npm install *)",
+      "Bash(git status *)",
+      "Bash(npm uninstall *)"
     ]
   }
 }
