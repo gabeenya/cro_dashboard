@@ -73,9 +73,8 @@ const VIOLATION_TYPES = {
     {group:'대규모유통', items:['계약서','대금지급지연','판촉사원 파견 강요','판촉행사 강요·비용전가','MD 개편 강요·비용전가','기타 불이익 제공·강요']}
   ],
   '영업비밀': ['문서등급 설정 기준 위반','영업비밀 관리 체계 미준수','사고반출(암호해제)','사고반출(웹)','사고반출(메신저)','사고반출(AI)','인수인계서 미징구','포렌식 적발'],
-  'IP': ['상표','디자인','부정경쟁방지법 위반','특허','기타'],
   '부실채권': ['미입금','부실채권'],
-  '감사': ['직장내괴롭힘','성희롱','부당언행','임금체불','법준수 프로세스 위반','기타부정 (법인카드 유용·현금 횡령)'],
+  '감사': ['직괴/성희롱','근태조작/위반','영업비밀유출','거래처부실&부정','회사자산손실','재고부실&부정','매출부정/성과왜곡','상품권/포인트','품질관리부실','채권관리손실','기타규정위반'],
   '중대재해': ['산업재해 발생','중대재해 발생'],
   '재고': ['로스율','관리율']
 };
@@ -119,7 +118,11 @@ function rowCnt(r){
   if(m==null && v==null) return 1;
   // 영업비밀의 '모니터링' 건수 중 외식BG 연동분(source_id 있음)만 1/10 비율로 반영(위반/완료는 그대로, 직접 입력분은 그대로).
   const isSyncedTradeSecret = r.risk_categories?.name==='영업비밀' && r.source_id;
-  const mEff = isSyncedTradeSecret ? Math.round((m||0)/10) : (m||0);
+  // 패션 법인의 IP·공정거래 '모니터링' 건수는 1/100 비율로 반영(위반/완료는 그대로).
+  const isFashionScaled = r.divisions?.name==='패션' && (r.risk_categories?.name==='IP' || r.risk_categories?.name==='공정거래');
+  let mEff = m||0;
+  if(isSyncedTradeSecret) mEff = Math.round(mEff/10);
+  else if(isFashionScaled) mEff = Math.round(mEff/100);
   return mEff+(v||0);
 }
 // 위반 건수: 위반계열(위반/발생/적발) 또는 완료계열(완료/해결/조치완료)일 때만 반영
@@ -743,7 +746,11 @@ function showGradeCriteriaModal(){
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">감사 · 재고</div>
       <div style="margin-bottom:14px">등급 산정 대상에서 제외( — 표시)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
-      <div>법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점, F=0점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
+      <div style="margin-bottom:14px">법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점, F=0점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
+      <div style="font-size:11px;color:var(--text3);border-top:1px solid var(--border);padding-top:10px">
+        * 외식 영업비밀 모니터링 건수(외식BG 연동분)는 1/10 비율로 환산해 반영됩니다.<br>
+        * 패션 IP·공정거래 모니터링 건수는 1/100 비율로 환산해 반영됩니다.
+      </div>
     </div>`;
   showAlertModal(html);
 }
