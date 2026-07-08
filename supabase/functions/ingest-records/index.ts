@@ -163,7 +163,10 @@ Deno.serve(async (req) => {
     if (!brandId) return json({ error: `브랜드 매칭 실패(기타도 없음): ${brandName}` }, 500);
 
     // 5) 값 만들기 (기존 입력폼과 동일 규칙)
-    const rawState = String(rec.status ?? "").trim(); // 완료 / 모니터링 / 위반
+    // 외식BG가 상태값 뒤에 "(처리중)" 같은 부연설명을 붙이는 경우가 있어(예: "위반(처리중)"),
+    // 괄호 설명은 잘라내고 기본 단어(완료/모니터링/위반)만 취한다. 안 그러면 우리 쪽
+    // item_state 체크 제약조건에 없는 값이 되어 INSERT가 조용히 실패한다.
+    const rawState = String(rec.status ?? "").trim().replace(/\s*\(.*\)\s*$/, ""); // 완료 / 모니터링 / 위반
     const state = STATE_REMAP[category]?.[rawState] ?? rawState;
     const cnt = rec.count != null ? Number(rec.count) : null;
     const isMon = state === "모니터링";
