@@ -62,7 +62,8 @@
       "Bash(gh run *)",
       "Bash(curl *)",
       "Read(//tmp/**)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(npm -v)"
     ]
   }
 }

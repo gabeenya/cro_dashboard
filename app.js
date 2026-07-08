@@ -55,8 +55,8 @@ function toggleAuditFields(prefix, catName){
   const isAudit=catName==='감사';
   document.querySelectorAll('.audit-field-'+prefix).forEach(el=>el.classList.toggle('hidden-fg',!isAudit));
 }
-// 부실채권 금액 필드 표시/숨김 (미입금/2개월 초과 미입금 선택 시에만)
-const AMOUNT_REQUIRED_TYPES=['미입금','2개월 초과 미입금'];
+// 부실채권 금액 필드 표시/숨김 (미입금/부실채권 선택 시에만)
+const AMOUNT_REQUIRED_TYPES=['미입금','부실채권'];
 function toggleAmountField(prefix, catName, violationType){
   const needAmount=catName==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(violationType);
   document.querySelectorAll('.amount-field-'+prefix).forEach(el=>el.classList.toggle('hidden-fg',!needAmount));
@@ -74,7 +74,7 @@ const VIOLATION_TYPES = {
   ],
   '영업비밀': ['문서등급 설정 기준 위반','영업비밀 관리 체계 미준수','사고반출(암호해제)','사고반출(웹)','사고반출(메신저)','사고반출(AI)','인수인계서 미징구','포렌식 적발'],
   'IP': ['상표','디자인','부정경쟁방지법 위반','특허','기타'],
-  '부실채권': ['미입금','내용증명 미발송','2개월 초과 미입금'],
+  '부실채권': ['미입금','부실채권'],
   '감사': ['직장내괴롭힘','성희롱','부당언행','임금체불','법준수 프로세스 위반','기타부정 (법인카드 유용·현금 횡령)'],
   '중대재해': ['산업재해 발생','중대재해 발생'],
   '재고': ['로스율','관리율']
@@ -485,10 +485,10 @@ function monthsSpan(start,cutoff){
 function calcCategoryGrade(catName, group, months=1){
   if(GRADE_EXCLUDE.includes(catName)) return null;
   if(catName==='부실채권'){
-    // '2개월 초과 미입금' 금액이 1억 초과인 건이 하나라도 있으면 F, 1억 이하면 D
-    const hasOverLimit=group.some(x=>x.violation_type==='2개월 초과 미입금' && (x.amount??0)>BAD_DEBT_AMOUNT_LIMIT);
+    // '부실채권' 금액이 1억 초과인 건이 하나라도 있으면 F, 1억 이하면 D
+    const hasOverLimit=group.some(x=>x.violation_type==='부실채권' && (x.amount??0)>BAD_DEBT_AMOUNT_LIMIT);
     if(hasOverLimit) return 'F';
-    const hasBigD=group.some(x=>x.violation_type==='2개월 초과 미입금' && (x.amount??0)<=BAD_DEBT_AMOUNT_LIMIT);
+    const hasBigD=group.some(x=>x.violation_type==='부실채권' && (x.amount??0)<=BAD_DEBT_AMOUNT_LIMIT);
     if(hasBigD) return 'D';
     return gradeTier(sumCnt(group)/months); // 발생+해결 전체 건수의 월평균
   }
@@ -739,7 +739,7 @@ function showGradeCriteriaModal(){
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">중대재해</div>
       <div style="margin-bottom:14px">위반(위반+완료 상태) 월평균 건수 기준(위와 동일 구간). 단 <b>'중대재해 발생' 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">부실채권</div>
-      <div style="margin-bottom:14px">발생+해결 전체 월평균 건수 기준(위와 동일 구간). '2개월 초과 미입금' 금액이 <b>1억 초과</b>인 건이 있으면 <b>F</b>, <b>1억 이하</b>인 건이 있으면 <b>D</b>(건수와 무관)</div>
+      <div style="margin-bottom:14px">발생+해결 전체 월평균 건수 기준(위와 동일 구간). '부실채권' 금액이 <b>1억 초과</b>인 건이 있으면 <b>F</b>, <b>1억 이하</b>인 건이 있으면 <b>D</b>(건수와 무관)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">감사 · 재고</div>
       <div style="margin-bottom:14px">등급 산정 대상에서 제외( — 표시)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
@@ -2021,7 +2021,7 @@ async function downloadBulkTemplate(){
     {header:'양형(징계 시)',key:'actPen',width:18},
     {header:'조치내용(징계 외 시)',key:'actOther',width:30},
     {header:'위반유형',key:'vtype',width:26},
-    {header:'금액(부실채권 미입금/2개월초과미입금 시 필수)',key:'amount',width:32},
+    {header:'금액(부실채권 미입금/부실채권 시 필수)',key:'amount',width:32},
     {header:'징계유형(감사 시 필수)',key:'discType',width:22},
     {header:'외부노출 여부(O 또는 공란)',key:'external',width:20}
   ];
@@ -2137,7 +2137,7 @@ async function downloadBulkTemplate(){
     '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링/발생/적발이면 모니터링 건수, 위반/완료/해결/조치완료면 위반 건수로 집계)',
     '6-1. 상태 옵션은 영역마다 다릅니다 — 부실채권: 발생/해결, 감사: 적발/조치완료, 중대재해: 발생/조치완료, 그 외 영역: 모니터링/위반/완료.',
     '7. 영역 대분류가 \'감사\'이면 징계유형·징계자명(이름)·양형이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
-    '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'2개월 초과 미입금\'이면 금액이 필수입니다.',
+    '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'부실채권\'이면 금액이 필수입니다.',
     '9. 외부노출 여부: 해당 건이 외부에 노출됐으면 O를 입력하세요(공란=미노출). 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP)에서는 이 값이 F등급 산정에 사용됩니다.',
     '10. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
     '11. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
@@ -2288,11 +2288,11 @@ async function handleBulkUpload(ev){
         if(allowed.length && !allowed.includes(vtype)) errs.push(`위반유형 '${vtype}'는 '${catName}'에 속하지 않음`);
       }
 
-      // 금액 — 부실채권 + 미입금/2개월 초과 미입금이면 필수
+      // 금액 — 부실채권 + 미입금/부실채권이면 필수
       let amountVal=null;
       const amountNeeded=catObj?.name==='부실채권' && AMOUNT_REQUIRED_TYPES.includes(vtype);
       if(amountNeeded){
-        if(amountStr==='') errs.push('금액 누락(부실채권 미입금/2개월 초과 미입금)');
+        if(amountStr==='') errs.push('금액 누락(부실채권 미입금/부실채권)');
         else if(isNaN(Number(amountStr))||Number(amountStr)<0) errs.push('금액은 0 이상 숫자');
         else amountVal=parseInt(amountStr);
       } else if(amountStr!==''){
