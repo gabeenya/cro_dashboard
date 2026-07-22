@@ -530,7 +530,7 @@ function recomputeGrades(){
 
 // ── 사이드바 배지 ───────────────────────────
 function updateSidebarBadges(){
-  ['패션','유통','외식','파크','건설','소법인'].forEach(name=>{
+  ['패션','유통','외식','파크','건설','쥬얼리'].forEach(name=>{
     const cnt=sumCnt(allRisks.filter(r=>r.divisions?.name===name));
     const el=document.getElementById('db-'+name);
     if(el) el.textContent=cnt;
