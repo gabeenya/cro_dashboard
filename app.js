@@ -1414,7 +1414,7 @@ function renderAreaNotesDashboard(){
 }
 // 특이사항/조치사항 행 클릭 → 전문(全文) 보기 팝업 (표에서 td-clip으로 잘려 보이는 내용을 그대로 다 보여줌)
 function showAreaNoteDetail(id){
-  const n=allAreaNotes.find(x=>x.id===id); if(!n) return;
+  const n=allAreaNotes.find(x=>x.id===Number(id)); if(!n) return;
   const brand=allBrands.find(b=>b.id===n.brand_id);
   const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
   const cat=allCats.find(c=>c.id===n.category_id);
