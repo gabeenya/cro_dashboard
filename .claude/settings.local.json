@@ -69,7 +69,8 @@
       "Bash(npm uninstall *)",
       "Bash(npm audit *)",
       "Skill(artifact-design)",
-      "Artifact"
+      "Artifact",
+      "Bash(powershell -Command \"Copy-Item 'supabase\\\\functions\\\\ingest-records\\\\index.ts' 'supabase\\\\functions\\\\ingest-records\\\\ingest-records_배포용.txt' -Encoding UTF8\")"
     ]
   }
 }

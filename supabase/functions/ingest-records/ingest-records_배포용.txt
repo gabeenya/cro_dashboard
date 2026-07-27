@@ -28,6 +28,8 @@
 //   - registered_at: date,  note: note,  title(필수): subtype
 //   - source_id: 상대 record.id (수정/삭제 때 짝을 찾기 위한 꼬리표)
 //   - (2026-07-06 밤 변경) 기준월 제외 규칙 제거 — 이제 등록 월과 무관하게 전 기간 동기화(전체 백필 대응)
+//   - (2026-07-27 추가) source_updated_at: 상대 records.updated_at을 그대로 저장해두고,
+//     웹훅이 몰려서 도착 순서가 뒤바뀌어도(대량 백필 등) 더 과거 이벤트가 최신 값을 덮어쓰지 못하게 막음.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
