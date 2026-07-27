@@ -466,16 +466,14 @@ function getGradeCutoff(){
   if(!gradeRefMonth) return refNow();
   return new Date(gradeRefMonth.y, gradeRefMonth.m+1, 0, 23,59,59,999);
 }
-// 실제 데이터 입력이 본격적으로 시작된 시점(2026-03). 1~2월은 소량 테스트성 입력이라
-// 연누적 월평균에 그 두 달을 넣으면 분모만 늘어 평균이 실제보다 낮게(등급이 좋게) 나옴.
-const DATA_START=new Date(2026,2,1);
-// 집계 기간 윈도우: gradePeriodMode에 따라 연누적(그 해 1/1~기준일, 단 DATA_START 이전으로는 안 내려감) 또는 당월(그 달 1일~기준일)
+// 집계 기간 윈도우: gradePeriodMode에 따라 연누적(그 해 1/1~기준일) 또는 당월(그 달 1일~기준일)
+// (2026-07-27) 예전엔 1~2월을 "테스트성 소량 입력"으로 보고 연누적/월평균 계산에서 제외했으나
+// (DATA_START=2026-03-01 클램프), 상단 KPI 카드의 "누적"(기간 제한 없음)과 집계 기준이 달라
+// 같은 "연누적"이라는 말인데 숫자가 다르게 보이는 혼란이 있어 제거함 — 이제 항상 1/1부터.
 function gradeWindow(cutoff=getGradeCutoff()){
-  let start = gradePeriodMode==='당월'
+  const start = gradePeriodMode==='당월'
     ? new Date(cutoff.getFullYear(),cutoff.getMonth(),1)
-    : new Date(Math.max(new Date(cutoff.getFullYear(),0,1), DATA_START));
-  // 기준월을 DATA_START 이전(2026년 1~2월)으로 골랐을 때 start가 cutoff보다 늦어지는 것 방지
-  if(start>cutoff) start=new Date(cutoff.getFullYear(),cutoff.getMonth(),1);
+    : new Date(cutoff.getFullYear(),0,1);
   return {start,cutoff};
 }
 // start~cutoff가 몇 개월에 걸치는지(둘 다 같은 달이면 1). 연누적 등급을 "월평균" 기준으로 매길 때 나눗셈에 사용.
