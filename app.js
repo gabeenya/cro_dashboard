@@ -1486,6 +1486,7 @@ function buildAreaNoteEditRow(n){
   </td></tr>`;
 }
 function startAreaNoteEdit(id){
+  id=Number(id);
   areaNoteEditId=(areaNoteEditId===id)?null:id;
   renderAreaNotesList();
 }
@@ -1518,7 +1519,7 @@ async function deleteAreaNote(id){
   const {error}=await sb.from('area_notes').delete().eq('id',id);
   if(error){ showToast('삭제 실패: '+error.message); return; }
   showToast('삭제 완료');
-  if(areaNoteEditId===id) areaNoteEditId=null;
+  if(areaNoteEditId===Number(id)) areaNoteEditId=null;
   await loadAreaNotes();
   refreshAreaNotesViews();
 }
