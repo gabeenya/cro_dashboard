@@ -70,7 +70,20 @@
       "Bash(npm audit *)",
       "Skill(artifact-design)",
       "Artifact",
-      "Bash(powershell -Command \"Copy-Item 'supabase\\\\functions\\\\ingest-records\\\\index.ts' 'supabase\\\\functions\\\\ingest-records\\\\ingest-records_배포용.txt' -Encoding UTF8\")"
+      "Bash(powershell -Command \"Copy-Item 'supabase\\\\functions\\\\ingest-records\\\\index.ts' 'supabase\\\\functions\\\\ingest-records\\\\ingest-records_배포용.txt' -Encoding UTF8\")",
+      "Bash(echo \"--- 246-302 ---\")",
+      "Bash(echo \"--- 303,356p ---\")",
+      "Bash(echo \"--- 357,392p \\(chart-row incl donut\\) ---\")",
+      "Bash(echo \"--- 455,518p \\(list page note tab\\) ---\")",
+      "Bash(echo \"--- 594,614p \\(input page area note form\\) ---\")",
+      "Bash(echo \"--- logo ---\")",
+      "Bash(grep -n sb-logo C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html)",
+      "Bash(echo \"--- audit ids ---\")",
+      "Bash(grep -n 'audit-kpi-hd\\\\|audit-kpi-row\\\\|audit-action-card' C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html)",
+      "Bash(echo \"--- donut title ---\")",
+      "Bash(grep -n 'k-recovery-amt\\\\|kpi-row\\\\|k-acc-viol\\\\|k-mon-viol\\\\|k-cur-act' C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html)",
+      "Bash(grep -n 'grade-mx-table\\\\|overflow-x:auto' C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html)",
+      "Bash(grep *)"
     ]
   }
 }

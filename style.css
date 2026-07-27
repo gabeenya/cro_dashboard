@@ -168,6 +168,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kpi-section-ttl{font-size:13px;font-weight:700;color:var(--text)}
 .kpi-row{display:grid;gap:10px;margin-bottom:10px}
 .kpi-col{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+/* 회수금액 카드가 숨겨진 영역뷰(부실채권 제외)에서 나머지 3장이 그 빈자리까지 채우도록 */
+.kpi-col.kpi-col-3{grid-template-columns:repeat(3,1fr)}
 
 .kpi{
   background:var(--surface);
@@ -224,6 +226,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .kpi-sla-inline:hover .kpi-num-label{color:var(--text)}
 .kpi-sla-inline .kpi-num-val{color:var(--text3)}
 .kpi-sla-inline.has-alert .kpi-num-val{color:#ea580c}
+/* KPI 숫자 위에 마우스 올리면 상세 팝오버(showKpiPopover)가 뜨는 자리 — kpi-sla-inline과 달리
+   숫자 색은 그대로 두고 커서만 바꾼다(예전에 이 클래스를 재사용했다가 숫자가 회색으로 바뀌는
+   부작용이 있었음 — .kpi-sla-inline .kpi-num-val{color:var(--text3)} 규칙 때문). */
+.kpi-hover-trigger{cursor:pointer}
+.kpi-hover-trigger:hover .kpi-num-label{color:var(--text)}
 .sla-popover{
   display:none;position:fixed;z-index:9999;background:var(--surface);
   border:1px solid var(--border2);border-radius:var(--r-lg);box-shadow:0 8px 24px rgba(0,0,0,0.16);
@@ -288,6 +295,34 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 
 /* ════ 매트릭스 ════ */
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+/* 리스크 노출/측정판 줄: 기본은 측정판 카드 하나(전체 폭). 영역뷰(.area-view)일 땐 측정판을 좁히고
+   옆에 '최근 모니터링 현황' 카드를 붙여 2단으로 전환한다(app.js applyAreaViewLayout 참조).
+   두 카드 높이를 강제로 통일(420px 고정) — 각 카드는 flex column으로 만들어 헤더는 그대로 두고
+   본문(표/티커)만 flex:1로 남는 공간을 채우게 한 뒤, 넘치는 내용은 그 안에서만 스크롤되게 함. */
+.matrix-row{margin-bottom:16px}
+.matrix-row.area-view{display:grid;grid-template-columns:1fr 1fr;gap:12px;height:420px}
+.matrix-row.area-view>.card{height:100%;display:flex;flex-direction:column;overflow:hidden}
+.matrix-row.area-view>.card>.card-bd{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.matrix-row.area-view #area-recent-card>.ticker-wrap{flex:1;min-height:0;max-height:none;overflow-y:auto}
+@media(max-width:1100px){
+  .matrix-row.area-view{grid-template-columns:1fr;height:auto}
+  .matrix-row.area-view>.card{height:420px}
+}
+/* 측정판 행 애니메이션(mxRowIn, rotateX 3D 플립) 재생 중 순간적으로 스크롤 가능 영역이
+   생겨 세로 스크롤바가 깜빡이는 문제 방지. overflow-x만 auto로 두면 overflow-y는 CSS 스펙상
+   자동으로 auto가 되어버려(둘 중 하나가 visible이 아니면 다른 쪽도 visible일 수 없음) 3D 회전
+   중 튀어나온 만큼 스크롤바가 반짝였다 사라짐 — overflow-y를 명시적으로 hidden 고정해 방지. */
+#grade-mx-scroll{overflow-y:hidden}
+/* 측정판 표 영역: 영역뷰(단일 영역)일 땐 남는 공간을 채우고, 내용이 넘치면 카드가 늘어나는
+   대신 이 안에서만 위아래로 스크롤되게 함(위 hidden보다 이 규칙이 더 구체적이라 여기선 우선 적용) */
+#grade-mx-scroll.area-scroll{flex:1;min-height:0;max-height:none;overflow-y:auto}
+/* 측정판 카드 헤더가 좁아졌을 때(영역뷰) LIVE 뱃지·드롭다운을 줄여 한 줄에 다 들어오게 함 */
+.matrix-row.area-view #grade-matrix-card .card-hd{gap:6px}
+.matrix-row.area-view #grade-matrix-card .card-hd-left{gap:5px}
+.matrix-row.area-view #grade-matrix-card .live-badge{font-size:8px;padding:1px 5px;gap:2px}
+.matrix-row.area-view #grade-matrix-card .card-hd>div:last-child{gap:5px}
+.matrix-row.area-view #grade-matrix-card .card-hd select{font-size:10px;padding:3px 5px}
+.matrix-row.area-view #grade-matrix-card #grade-period-label{max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mx-wrap{overflow-x:auto}
 .mx{width:100%;border-collapse:collapse;font-size:11px;min-width:760px;table-layout:fixed}
 .mx th{

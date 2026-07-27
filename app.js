@@ -237,7 +237,8 @@ function showSessionWarning(expireAt){
       </div>
       <div class="mo-ft" style="justify-content:center">
         <button class="btn btn-sm" onclick="dismissSessionWarning()">확인</button>
-        <button class="btn btn-red btn-sm" onclick="doLogout()">지금 로그아웃</button>
+        <button class="btn btn-red btn-sm" onclick="extendSession()">시간 연장</button>
+        <button class="btn btn-sm" onclick="doLogout()">지금 로그아웃</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
@@ -256,6 +257,13 @@ function showSessionWarning(expireAt){
 function dismissSessionWarning(){
   const ov=document.getElementById('sess-warn-ov'); if(ov) ov.remove();
   if(_sessCountdown){ clearInterval(_sessCountdown); _sessCountdown=null; }
+}
+// 로그인 시각을 지금으로 다시 찍어 3시간 타이머를 처음부터 재시작(경고 팝업에서 '시간 연장' 클릭 시)
+function extendSession(){
+  sessionStorage.setItem('cro_loginAt', String(Date.now()));
+  dismissSessionWarning();
+  startSessionTimers();
+  showToast('로그인 시간이 연장되었습니다');
 }
 
 // ── 사이드바 토글 (모바일) ─────────────────────────────
@@ -336,6 +344,7 @@ async function loadMaster(){
     return {id:b.id, name: dv?`${dv.name} - ${b.name}`:b.name};
   });
   fillSel('an-brand',brandOptions,'선택');
+  fillSel('an-category',allCats,'선택 안 함');
 }
 
 function fillSel(id,items,ph){
@@ -455,6 +464,15 @@ const GRADE_CAT5=['중대재해','불법파견','공정거래','영업비밀','I
 const GRADE_COMPLIANCE=['불법파견','공정거래','영업비밀','IP'];       // "컴플라이언스 분류" — 외부노출 1건 이상이면 F
 const GRADE_EXCLUDE=['감사','재고'];                                 // 등급 산정 제외
 const BAD_DEBT_AMOUNT_LIMIT=100000000; // 부실채권 D등급 금액 기준(1억, 초과가 아니라 이하일 때 D)
+// 대시보드 상단 f-cat(영역 대분류) 필터에서 선택된 영역을 반환(없으면 null).
+// 값이 있으면 대시보드가 "영역뷰" 레이아웃(도넛→위반유형별 전환 등)으로 바뀐다.
+// '감사'도 포함해서 반환한다 — 감사만의 추가 처리(측정판/특이사항/상단KPI 숨김)는
+// 호출부에서 cat.name==='감사' 여부로 별도 분기한다(renderKPI/renderMatrix/renderDash 참조).
+function getAreaViewCategory(){
+  const v=document.getElementById('f-cat')?.value;
+  if(!v) return null;
+  return allCats.find(c=>c.id==v) || null;
+}
 function gradeTier(cnt){
   if(cnt<=3) return 'A';
   if(cnt<=6) return 'B';
@@ -536,6 +554,22 @@ function updateSidebarBadges(){
 }
 
 // ── 탭/필터 ────────────────────────────────
+// 로고 클릭 — 지금까지 걸려있던 모든 필터/스냅샷/측정판 설정을 초기화하고
+// "로그인 직후와 동일한 첫 화면"(메인뷰, 전계열사, 전영역)으로 이동.
+function goHome(){
+  // f-div: 메인뷰 상단 필터바의 "계열사" 드롭다운(사이드바 클릭과 별개로 activeDiv=null인 채
+  // 특정 계열사만 걸러보는 용도) — 이것도 초기화 안 하면 로고를 눌러도 그 계열사만 계속 보임.
+  ['f-div','f-cat','f-sub','f-grade','f-month'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  viewMonth=null;
+  gradeRefMonth=null; gradePeriodMode='연누적';
+  const gRefSel=document.getElementById('grade-ref-month'); if(gRefSel) gRefSel.value='';
+  const gModeSel=document.getElementById('grade-period-mode'); if(gModeSel) gModeSel.value='연누적';
+  const gScopeSel=document.getElementById('grade-view-scope'); if(gScopeSel) gScopeSel.value='';
+  buildSnapshot();
+  setDiv('');
+}
 function setDiv(name,el){
   activeDiv=name;
   currentPage='dashboard';
@@ -631,11 +665,14 @@ function updateFbarSelects(){
 }
 function applyFilter(){renderDash(getFiltered());}
 // 메인뷰 상단 필터바의 '계열사' 드롭다운 — 선택 시 측정판도 그 계열사의 브랜드 기준으로 자동 전환
+// 상단 필터바의 "계열사" 드롭다운으로 특정 계열사를 고르면, 사이드바에서 그 계열사를
+// 클릭한 것과 완전히 동일하게 계열사뷰로 전환한다(브랜드/조직별 카드 그리드 등 그대로 노출).
+// 예전엔 activeDiv는 그대로 두고 데이터만 필터링해서, 계열사뷰 화면(카드 그리드) 대신
+// 메인뷰 화면이 그 계열사 하나만 필터된 채로 어색하게 보이는 문제가 있었음.
 function onFDivChange(){
   const divId=document.getElementById('f-div')?.value||'';
-  const scopeSel=document.getElementById('grade-view-scope');
-  if(scopeSel) scopeSel.value=divId;
-  applyFilter();
+  const dObj=divId?allDiv.find(d=>d.id==divId):null;
+  setDiv(dObj?dObj.name:'', dObj?document.getElementById('div-'+dObj.name):null);
 }
 
 // ── 대시보드 전체 렌더 ──────────────────────
@@ -645,21 +682,37 @@ function renderDash(risks){
   if(fbar) fbar.style.display='';
   updateFbarSelects();
   playDashAnims(); // KPI·알림 카드 진입 애니메이션 재생(차트 재생 시점과 동기화)
-  renderAlerts(risks); renderKPI(risks); renderMatrix(risks); renderAuditKPI(risks); renderTrend(risks); renderDonut(risks);
+  renderAlerts(risks); renderKPI(risks); renderMatrix(risks); renderAuditKPI(risks); renderDonut(risks);
+  renderAreaNotesDashboard();
   _kpiAnimated=true; // 이번 렌더에서 카운트업을 다 재생했으니, 이후 같은 사이클의 필터 변경 등은 즉시 반영
+  const areaCat=getAreaViewCategory();
   if(!activeDiv){
     // 메인뷰
-    document.getElementById('section-main').style.display='';
+    document.getElementById('section-main').style.display=areaCat?'none':'';
     document.getElementById('section-div').style.display='none';
     renderDivisionBarChart(risks);
     renderHighMain(risks);
   } else {
     // 계열사뷰
     document.getElementById('section-main').style.display='none';
-    document.getElementById('section-div').style.display='';
+    document.getElementById('section-div').style.display=areaCat?'none':'';
     renderBrandGrid(risks);
     renderHighDiv(risks);
   }
+  // 영역뷰: 측정판 카드를 좁히고 옆에 '최근 모니터링 현황'을 붙임(위 section-main/div 대체).
+  // 감사 영역은 측정판·특이사항판 자체가 의미 없어(감사 전용 KPI/조치사항 판이 따로 있음) 통째로 숨김.
+  const isAudit=areaCat?.name==='감사';
+  const matrixRow=document.getElementById('matrix-row');
+  const areaRecentCard=document.getElementById('area-recent-card');
+  const areaNotesCard=document.getElementById('area-notes-card');
+  if(matrixRow){ matrixRow.style.display=isAudit?'none':''; matrixRow.classList.toggle('area-view', !!areaCat && !isAudit); }
+  if(areaRecentCard) areaRecentCard.style.display=(areaCat && !isAudit)?'':'none';
+  if(areaNotesCard) areaNotesCard.style.display=isAudit?'none':'';
+  if(areaCat && !isAudit) renderHighArea(risks); // section-main/div보다 나중에 호출해 자동 스크롤 타이머가 실제 보이는 티커에 바인딩되게 함
+  // renderTrend도 감사일 땐 자체 티커(trend-audit-wrap)를 돌리므로 반드시 맨 마지막에 호출한다.
+  // (renderHighMain/Div도 공용 타이머(highRotateTimer)를 쓰기 때문에, 이보다 먼저 호출하면
+  //  방금 시작한 감사 티커가 곧바로 renderHighMain/Div 쪽으로 뺏겨 멈춰버렸었음)
+  renderTrend(risks);
 }
 
 // ── 알림 (장기 미해결) ────────────────────────
@@ -722,6 +775,54 @@ function showSlaPopover(){
 }
 function hideSlaPopover(){
   const pop=document.getElementById('sla-popover');
+  if(pop) pop.classList.remove('open');
+}
+
+// KPI 카드(조치중 건수 / 회수금액의 발생액·해결액)에 마우스 올리면 그 숫자를 구성하는 실제 건 목록을
+// showSlaPopover와 동일한 방식(body-appended popover)으로 보여줌. 목록 자체는 renderKPI가 매번 채워둔다.
+let _kpiPopoverLists={occurred:[],recovered:[],curact:[]};
+function showKpiPopover(triggerId,type){
+  const trigger=document.getElementById(triggerId);
+  if(!trigger) return;
+  const cfgMap={
+    occurred:{title:'부실채권 발생 건',list:_kpiPopoverLists.occurred,amount:true},
+    recovered:{title:'부실채권 해결 건',list:_kpiPopoverLists.recovered,amount:true},
+    curact:{title:'조치중(위반) 건',list:_kpiPopoverLists.curact,amount:false},
+  };
+  const cfg=cfgMap[type]; if(!cfg) return;
+  let pop=document.getElementById('kpi-popover');
+  if(!pop){
+    pop=document.createElement('div');
+    pop.id='kpi-popover';
+    pop.className='sla-popover';
+    document.body.appendChild(pop);
+  }
+  const list=cfg.list||[];
+  if(!list.length){
+    pop.innerHTML=`<div class="sla-pop-empty">해당하는 건이 없습니다</div>`;
+  } else {
+    const summary=cfg.amount ? fmtWon(list.reduce((s,r)=>s+(r.amount||0),0)) : `${sumCnt(list)}건수`;
+    pop.innerHTML=`
+      <div class="sla-pop-hd">${cfg.title} — ${list.length}레코드 · ${summary}</div>
+      <table class="sla-pop-tbl">
+        <thead><tr><th>발생일</th><th>영역/상세</th><th>브랜드</th><th>${cfg.amount?'금액':'건수'}</th></tr></thead>
+        <tbody>
+          ${list.map(r=>`<tr onclick="hideKpiPopover();openEdit('${r.id}')">
+            <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
+            <td>${r.risk_categories?.name||'-'}${r.risk_subcategories?.name?' / '+r.risk_subcategories.name:''}</td>
+            <td>${r.brands?.name||'-'}</td>
+            <td style="text-align:center">${cfg.amount?fmtWon(r.amount||0):rowCnt(r)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+  const rect=trigger.getBoundingClientRect();
+  pop.style.left=Math.round(rect.left)+'px';
+  pop.style.top=Math.round(rect.bottom+6)+'px';
+  pop.classList.add('open');
+}
+function hideKpiPopover(){
+  const pop=document.getElementById('kpi-popover');
   if(pop) pop.classList.remove('open');
 }
 
@@ -793,14 +894,32 @@ function renderKPI(risks){
   const mb=document.getElementById('k-month-badge');
   if(mb) mb.textContent = viewMonth ? `${thisY}.${String(thisM+1).padStart(2,'0')}월` : `${thisM+1}월`;
 
+  const areaCat=getAreaViewCategory();
+  const isAudit=areaCat?.name==='감사';
+  const isBadDebt=areaCat?.name==='부실채권';
+  // 감사 영역뷰: 상단 KPI 4장(연누적/월누적/조치중/회수금액) 자체를 숨김(감사 전용 KPI가 따로 있음)
+  const topRow=document.getElementById('top-kpi-row');
+  if(topRow) topRow.style.display=isAudit?'none':'';
+  // 회수금액 카드: 부실채권 영역을 보고 있을 때만 의미가 있으므로 그 외 영역 선택 시엔 숨김
+  // 그때 나머지 3장(연누적/월누적/조치중)이 빈자리를 채우도록 3열로 넓힘
+  const recoveryHidden = !!areaCat && !isBadDebt;
+  const recoveryCard=document.getElementById('kpi-recovery-card');
+  if(recoveryCard) recoveryCard.style.display=recoveryHidden?'none':'';
+  if(topRow) topRow.classList.toggle('kpi-col-3', recoveryHidden && !isAudit);
+
   // 회수금액: 부실채권 발생액(전체, 금액 입력된 건 전부) 대비 해결액(해결 상태) — 기준일까지
   const badDebtRisks=risks.filter(r=>r.risk_categories?.name==='부실채권' && r.amount);
   const occurredAmt=badDebtRisks.reduce((s,r)=>s+(r.amount||0),0);
-  const recovery=badDebtRisks.filter(r=>r.item_state==='해결').reduce((s,r)=>s+(r.amount||0),0);
+  const recoveredRisks=badDebtRisks.filter(r=>r.item_state==='해결');
+  const recovery=recoveredRisks.reduce((s,r)=>s+(r.amount||0),0);
   const recoveryRate=pctRateExact(recovery,occurredAmt); // 문자열(소수점 1자리, 내림)
+  _kpiPopoverLists.occurred=badDebtRisks;
+  _kpiPopoverLists.recovered=recoveredRisks;
 
-  // 감사·부실채권은 위반/모니터링/조치중 KPI에 반영하지 않음
-  risks=risks.filter(r=>r.risk_categories?.name!=='감사' && r.risk_categories?.name!=='부실채권');
+  // 감사는 항상 제외. 부실채권은 원래 위반/모니터링/조치중 집계에서 제외하는 게 기본이지만
+  // (회수금액 카드로 따로 보여주므로) 지금 딱 부실채권 영역만 보고 있을 땐 제외하면 안 됨 —
+  // 그러면 필터링된 risks(이미 부실채권만 남음)가 여기서 또 한 번 걸러져 전부 0/빈 값이 됐었음.
+  risks=risks.filter(r=>r.risk_categories?.name!=='감사' && (isBadDebt || r.risk_categories?.name!=='부실채권'));
 
   // 누적: 위반(위반+완료) / 모니터링(전체) — 입력 건수 합계 기준
   // 표시는 소수점까지 정확히(반올림으로 0%가 되어 실제 위반이 안 보이는 일이 없도록), 막대 너비만 정수 비율 사용
@@ -821,7 +940,9 @@ function renderKPI(risks){
   const monRateText=pctRateExact(monViol,monMon);
 
   // 현재: 조치중(위반계열) + 처리완료율(완료계열/(위반+완료))
-  const curAct=sumViol(risks.filter(r=>isViolState(r.item_state)));
+  const curActRisks=risks.filter(r=>isViolState(r.item_state));
+  _kpiPopoverLists.curact=curActRisks;
+  const curAct=sumViol(curActRisks);
   const curDone=sumViol(risks.filter(r=>isDoneState(r.item_state)));
   const curTotal=curAct+curDone;
   const curRate=pctRate(curDone,curTotal);
@@ -872,6 +993,38 @@ function setBar(id,pct,cls){
 
 // ── 추이 차트 ──────────────────────────────
 function renderTrend(risks){
+  // 감사 영역뷰: 월별 추이 대신 '최근 모니터링 현황' 목록으로 대체(감사는 추이보다 최근 처리 건 확인이 더 유용)
+  const isAudit=getAreaViewCategory()?.name==='감사';
+  const titleEl=document.getElementById('trend-card-title');
+  const controlsEl=document.getElementById('trend-controls');
+  const chartBoxEl=document.getElementById('trend-chart-box');
+  const auditWrapEl=document.getElementById('trend-audit-wrap');
+  if(isAudit){
+    if(titleEl) titleEl.textContent='최근 모니터링 현황';
+    if(controlsEl) controlsEl.style.display='none';
+    if(chartBoxEl) chartBoxEl.style.display='none';
+    if(auditWrapEl) auditWrapEl.style.display='';
+    if(tChart){ tChart.destroy(); tChart=null; }
+    const list=sortByRecent(risks);
+    const b=document.getElementById('high-body-audit');
+    if(b){
+      b.innerHTML=list.length?list.map(r=>`
+        <tr onclick="openEdit('${r.id}')">
+          <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
+          <td>${r.divisions?.name||'-'}</td>
+          <td>${escapeHTML(r.title||'-')}</td><td>${stateBadge(r.item_state)}</td>
+        </tr>`).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+      // 다른 '최근 모니터링' 목록(high-body-main/div/area)과 동일하게 자동 스크롤 티커 적용 —
+      // 이게 없으면 340px를 넘는 나머지 행들은 스크롤 수단 없이 그냥 안 보였음.
+      if(list.length) startHighRotate('trend-audit-wrap'); else stopHighRotate();
+    }
+    return;
+  }
+  if(titleEl) titleEl.textContent='월별 모니터링 추이';
+  if(controlsEl) controlsEl.style.display='';
+  if(chartBoxEl) chartBoxEl.style.display='';
+  if(auditWrapEl) auditWrapEl.style.display='none';
+
   const now=refNow();
   const months=[];
   // 기간 창: 직전 before개월 + 현재 + 이후 after개월 (기본 3 + 1 + 8 = 12개월). 컨트롤로 조정 가능.
@@ -920,6 +1073,15 @@ function renderTrend(risks){
 
 // ── 도넛 ───────────────────────────────────
 function renderDonut(risks){
+  const titleEl=document.getElementById('donut-card-title');
+  const areaCat=getAreaViewCategory();
+  // 영역뷰(특정 영역 선택 중)에선 카테고리 도넛이 의미 없음(이미 한 영역만 남아있으므로) → 위반 유형별 비중으로 전환
+  if(areaCat){
+    if(titleEl) titleEl.textContent='위반 유형별 현황';
+    renderViolationTypeDonut(risks);
+    return;
+  }
+  if(titleEl) titleEl.textContent='리스크 영역별 현황';
   const vals=allCats.map(c=>sumCnt(risks.filter(r=>r.risk_categories?.id===c.id)));
   document.getElementById('donut-n').textContent=sumCnt(risks);
   if(dChart) dChart.destroy();
@@ -941,6 +1103,35 @@ function renderDonut(risks){
     <div class="lg-item"><div class="lg-dot" style="background:${CAT_COLORS[i]}"></div><span>${c.name}</span><span class="lg-n">${vals[i]}</span></div>
   `).join('');
 }
+// 영역뷰 전용 도넛: 현재 필터된(risks) 데이터의 실제 위반유형(violation_type)별 건수 비중
+function renderViolationTypeDonut(risks){
+  const groups={};
+  risks.forEach(r=>{
+    const key=(r.violation_type||'').trim()||'미지정';
+    groups[key]=(groups[key]||0)+rowCnt(r);
+  });
+  let labels=Object.keys(groups).sort((a,b)=>groups[b]-groups[a]);
+  let vals=labels.map(l=>groups[l]);
+  let colors=labels.map((_,i)=>CAT_COLORS[i%CAT_COLORS.length]);
+  if(!labels.length){ labels=['데이터 없음']; vals=[1]; colors=['#e5e7eb']; }
+  document.getElementById('donut-n').textContent=sumCnt(risks);
+  if(dChart) dChart.destroy();
+  dChart=new Chart(document.getElementById('donut-chart'),{
+    type:'doughnut',
+    data:{labels, datasets:[{data:vals.map(()=>0),backgroundColor:colors,borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'66%',
+      animation:{animateRotate:true,animateScale:true,duration:1100,easing:'easeOutQuart'},
+      plugins:{legend:{display:false}}}
+  });
+  requestAnimationFrame(()=>{
+    if(!dChart) return;
+    dChart.data.datasets[0].data=vals;
+    dChart.update();
+  });
+  document.getElementById('donut-legend').innerHTML=labels.map((l,i)=>`
+    <div class="lg-item"><div class="lg-dot" style="background:${colors[i]}"></div><span>${escapeHTML(l)}</span><span class="lg-n">${vals[i]}</span></div>
+  `).join('');
+}
 
 // ── 리스크 노출/측정판 ───────────────────────────────
 // 법인(계열사) × 영역 대분류가 기본. 상단 드롭다운으로 특정 계열사를 고르면 그 계열사의 브랜드별 순위로 전환.
@@ -958,7 +1149,13 @@ function scoreToOverallGrade(avg){
 function renderMatrix(risks){
   const head=document.getElementById('grade-mx-head'), body=document.getElementById('grade-mx-body');
   if(!head||!body) return;
-  const cats=allCats.filter(c=>!GRADE_EXCLUDE.includes(c.name));
+  // 영역뷰(특정 영역을 선택 중, 감사 제외 — 감사는 측정판 자체를 숨김)면 그 영역 한 칸만, 아니면 감사·재고 제외 전체 영역
+  const areaCat=getAreaViewCategory();
+  const isSingleCat = !!areaCat && areaCat.name!=='감사';
+  const cats=isSingleCat ? [areaCat] : allCats.filter(c=>!GRADE_EXCLUDE.includes(c.name));
+  const mxTable=document.getElementById('grade-mx-table');
+  if(mxTable) mxTable.style.minWidth = isSingleCat ? '340px' : '';
+  document.getElementById('grade-mx-scroll')?.classList.toggle('area-scroll', isSingleCat);
   const scopeSel=document.getElementById('grade-view-scope');
   const scopeDivObj=scopeSel&&scopeSel.value?allDiv.find(d=>d.id==scopeSel.value):null;
 
@@ -1060,6 +1257,15 @@ function onGradeRefMonthChange(){
 // ── 감사 영역 KPI + 조치사항 판 ──────────────────
 let auditPage=1; const AUDIT_PER=5;
 function renderAuditKPI(risks){
+  // 감사 KPI 4장 + 조치사항 판: 전체 영역(필터 없음)이거나 '감사'를 선택했을 때 노출.
+  // 그 외 특정 영역(중대재해 등)을 선택했을 때만 숨김(관련없는 0만 보여 혼란을 주므로).
+  const selectedCat = allCats.find(c=>c.id==document.getElementById('f-cat')?.value);
+  const isAuditView = !selectedCat || selectedCat.name==='감사';
+  const auditHd=document.getElementById('audit-kpi-hd'), auditRow=document.getElementById('audit-kpi-row'), auditActionCard=document.getElementById('audit-action-card');
+  if(auditHd) auditHd.style.display=isAuditView?'':'none';
+  if(auditRow) auditRow.style.display=isAuditView?'':'none';
+  if(auditActionCard) auditActionCard.style.display=isAuditView?'':'none';
+
   const mode=document.getElementById('audit-period-mode')?.value||'누적';
   const monthPick=document.getElementById('audit-month-pick');
   if(monthPick) monthPick.style.display=mode==='지정월'?'':'none';
@@ -1094,7 +1300,7 @@ function renderAuditKPI(risks){
     if(auditPage>tp) auditPage=1;
     const slice=sorted.slice((auditPage-1)*AUDIT_PER,auditPage*AUDIT_PER);
     tbody.innerHTML=slice.length?slice.map(r=>`
-      <tr onclick="openEdit('${r.id}')" style="cursor:pointer">
+      <tr onclick="showAuditActionDetail('${r.id}')" style="cursor:pointer">
         <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
         <td>${r.divisions?.name||'-'}</td>
         <td>${escapeHTML(r.title||'-')}</td>
@@ -1105,8 +1311,26 @@ function renderAuditKPI(risks){
     const pgnEl=document.getElementById('audit-pgn');
     if(pgnEl) pgnEl.innerHTML=buildPagination(auditPage,tp,page=>`auditPage=${page};renderAuditKPI(getFiltered())`);
   }
-
-  renderAreaNotesDashboard();
+}
+// 조치사항 판(감사) 행 클릭 → 전문 보기 팝업 (비고가 td-clip으로 잘려 보이는 걸 그대로 다 보여줌)
+function showAuditActionDetail(id){
+  const r=allRisks.find(x=>x.id===id); if(!r) return;
+  const nl2br=s=>escapeHTML(s||'-').replace(/\n/g,'<br>');
+  const html=`
+    <div class="mo-hd">
+      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">조치사항 상세</span></div>
+      <button class="mo-cls" onclick="closeAlertModal()">×</button>
+    </div>
+    <div class="mo-bd" style="font-size:12px;line-height:1.8;color:var(--text2)">
+      <div><b>날짜</b> ${fmtD(r.registered_at)}</div>
+      <div><b>법인</b> ${escapeHTML(r.divisions?.name||'-')} ${r.brands?.name?'/ '+escapeHTML(r.brands.name):''}</div>
+      <div><b>리스크 제목</b> ${escapeHTML(r.title||'-')}</div>
+      <div><b>징계유형</b> ${escapeHTML(r.discipline_type||'-')}</div>
+      <div><b>대상자</b> ${escapeHTML(r.discipline_name||'-')}</div>
+      <div><b>양형/처분</b> ${escapeHTML(r.sentence||'-')}</div>
+      <div style="margin-top:10px"><b>비고</b><br>${nl2br(r.note)}</div>
+    </div>`;
+  showAlertModal(html);
 }
 
 // ── 영역별 특이사항 (데이터 입력 → 리스크 노출/측정판 바로 아래 카드에 표시) ──────
@@ -1117,13 +1341,14 @@ async function loadAreaNotes(){
   allAreaNotes=data||[];
 }
 function resetAreaNote(){
-  ['an-date','an-brand','an-main-issue','an-issue-detail','an-action'].forEach(id=>{
+  ['an-date','an-brand','an-category','an-main-issue','an-issue-detail','an-action'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
 }
 async function saveAreaNote(){
   const date=document.getElementById('an-date').value||null;
   const brandId=document.getElementById('an-brand').value;
+  const categoryId=document.getElementById('an-category')?.value||'';
   const mainIssue=document.getElementById('an-main-issue').value.trim();
   const detail=document.getElementById('an-issue-detail').value.trim();
   const action=document.getElementById('an-action').value.trim();
@@ -1131,8 +1356,8 @@ async function saveAreaNote(){
   const btn=document.getElementById('an-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
   const {error}=await sb.from('area_notes').insert({
-    note_date:date, brand_id:parseInt(brandId), main_issue:mainIssue,
-    issue_detail:detail||null, action_text:action||null
+    note_date:date, brand_id:parseInt(brandId), category_id: categoryId?parseInt(categoryId):null,
+    main_issue:mainIssue, issue_detail:detail||null, action_text:action||null
   });
   btn.textContent='저장'; btn.disabled=false;
   if(error){ showToast('저장 실패: '+error.message); return; }
@@ -1145,13 +1370,25 @@ async function refreshAreaNotesViews(){
   renderAreaNotesDashboard();
   renderAreaNotesList();
 }
-// 메인뷰(대시보드) 영역별 특이사항 카드 — 조회 전용, 감사 KPI와 동일한 누적/지정월 기간을 공유
+// 메인뷰(대시보드) 영역별 특이사항 카드 — 조회 전용, 감사 KPI와 동일한 누적/지정월 기간을 공유.
+// 지금 보고 있는 법인(activeDiv)·영역(f-cat)으로 좁혀서 보여준다(다른 법인/영역 것까지 섞여 보이던 문제 수정).
 function renderAreaNotesDashboard(){
   const tbody=document.getElementById('area-notes-body');
   if(!tbody) return;
   const mode=document.getElementById('audit-period-mode')?.value||'누적';
   const monthPick=document.getElementById('audit-month-pick');
   let notes=allAreaNotes;
+  if(activeDiv){
+    const dObj=allDiv.find(d=>d.name===activeDiv);
+    notes=notes.filter(n=>{
+      const brand=allBrands.find(b=>b.id===n.brand_id);
+      return brand && dObj && brand.division_id===dObj.id;
+    });
+  }
+  const fCatVal=document.getElementById('f-cat')?.value;
+  if(fCatVal){
+    notes=notes.filter(n=>String(n.category_id)===String(fCatVal));
+  }
   if(mode==='지정월' && monthPick?.value){
     const [y,m]=monthPick.value.split('-').map(Number);
     notes=notes.filter(n=>{
@@ -1164,14 +1401,38 @@ function renderAreaNotesDashboard(){
   tbody.innerHTML=sorted.length?sorted.map(n=>{
     const brand=allBrands.find(b=>b.id===n.brand_id);
     const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
-    return `<tr>
+    const cat=allCats.find(c=>c.id===n.category_id);
+    return `<tr onclick="showAreaNoteDetail('${n.id}')" style="cursor:pointer">
       <td style="white-space:nowrap">${fmtD(n.note_date)}</td>
       <td>${escapeHTML(brand?.name||'-')}${dv?` <span style="color:var(--text3)">(${escapeHTML(dv.name)})</span>`:''}</td>
+      <td>${cat?escapeHTML(cat.name):'<span style="color:var(--text3)">미지정</span>'}</td>
       <td>${escapeHTML(n.main_issue||'-')}</td>
       <td class="td-clip">${escapeHTML(n.issue_detail||'-')}</td>
       <td class="td-clip">${escapeHTML(n.action_text||'-')}</td>
     </tr>`;
-  }).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+}
+// 특이사항/조치사항 행 클릭 → 전문(全文) 보기 팝업 (표에서 td-clip으로 잘려 보이는 내용을 그대로 다 보여줌)
+function showAreaNoteDetail(id){
+  const n=allAreaNotes.find(x=>x.id===id); if(!n) return;
+  const brand=allBrands.find(b=>b.id===n.brand_id);
+  const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
+  const cat=allCats.find(c=>c.id===n.category_id);
+  const nl2br=s=>escapeHTML(s||'-').replace(/\n/g,'<br>');
+  const html=`
+    <div class="mo-hd">
+      <div class="mo-ttl-wrap"><div class="mo-ttl-bar"></div><span class="mo-ttl">영역별 특이사항 상세</span></div>
+      <button class="mo-cls" onclick="closeAlertModal()">×</button>
+    </div>
+    <div class="mo-bd" style="font-size:12px;line-height:1.8;color:var(--text2)">
+      <div><b>날짜</b> ${fmtD(n.note_date)}</div>
+      <div><b>계열사/브랜드</b> ${dv?escapeHTML(dv.name)+' / ':''}${escapeHTML(brand?.name||'-')}</div>
+      <div><b>영역</b> ${cat?escapeHTML(cat.name):'미지정'}</div>
+      <div style="margin-top:10px"><b>주요이슈</b><br>${nl2br(n.main_issue)}</div>
+      <div style="margin-top:10px"><b>이슈상세</b><br>${nl2br(n.issue_detail)}</div>
+      <div style="margin-top:10px"><b>조치사항</b><br>${nl2br(n.action_text)}</div>
+    </div>`;
+  showAlertModal(html);
 }
 
 // ── 모니터링 리스트 > 영역별 특이사항 탭 — 수정/삭제 가능 ──────
@@ -1188,29 +1449,32 @@ function renderAreaNotesList(){
   slice.forEach(n=>{
     const brand=allBrands.find(b=>b.id===n.brand_id);
     const dv=brand?allDiv.find(d=>d.id===brand.division_id):null;
+    const cat=allCats.find(c=>c.id===n.category_id);
     const isEd=areaNoteEditId===n.id;
-    html+=`<tr class="${isEd?'ier-active':''}">
+    html+=`<tr class="${isEd?'ier-active':''}" onclick="showAreaNoteDetail('${n.id}')" style="cursor:pointer">
       <td style="white-space:nowrap">${fmtD(n.note_date)}</td>
       <td>${escapeHTML(brand?.name||'-')}${dv?` <span style="color:var(--text3)">(${escapeHTML(dv.name)})</span>`:''}</td>
+      <td>${cat?escapeHTML(cat.name):'<span style="color:var(--text3)">미지정</span>'}</td>
       <td>${escapeHTML(n.main_issue||'-')}</td>
       <td class="td-clip">${escapeHTML(n.issue_detail||'-')}</td>
       <td class="td-clip">${escapeHTML(n.action_text||'-')}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-sm" onclick="startAreaNoteEdit('${n.id}')">${isEd?'닫기':'수정'}</button>
-        <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="deleteAreaNote('${n.id}')">삭제</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation();startAreaNoteEdit('${n.id}')">${isEd?'닫기':'수정'}</button>
+        <button class="btn btn-sm" style="color:var(--위험-c);border-color:var(--위험-bd)" onclick="event.stopPropagation();deleteAreaNote('${n.id}')">삭제</button>
       </td>
     </tr>`;
     if(isEd) html+=buildAreaNoteEditRow(n);
   });
-  tbody.innerHTML=slice.length?html:'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
+  tbody.innerHTML=slice.length?html:'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';
   const pgnEl=document.getElementById('area-notes-pgn');
   if(pgnEl) pgnEl.innerHTML=buildPagination(areaNotePage,tp,page=>`areaNotePage=${page};renderAreaNotesList()`);
 }
 function buildAreaNoteEditRow(n){
-  return `<tr class="ier-row"><td colspan="6">
+  return `<tr class="ier-row" onclick="event.stopPropagation()"><td colspan="7">
     <div class="ier-form">
       <div class="fg"><label class="flb">날짜</label><input type="date" class="fc" id="ane-date" value="${n.note_date||''}"></div>
       <div class="fg"><label class="flb">브랜드명 *</label><select class="fc" id="ane-brand">${allBrands.map(b=>{const dv=allDiv.find(d=>d.id===b.division_id);return `<option value="${b.id}" ${b.id===n.brand_id?'selected':''}>${dv?`${dv.name} - ${b.name}`:b.name}</option>`;}).join('')}</select></div>
+      <div class="fg"><label class="flb">영역</label><select class="fc" id="ane-category"><option value="">선택 안 함</option>${allCats.map(c=>`<option value="${c.id}" ${c.id===n.category_id?'selected':''}>${c.name}</option>`).join('')}</select></div>
       <div class="fg full"><label class="flb">주요이슈 *</label><input type="text" class="fc" id="ane-main-issue" value="${escapeHTML(n.main_issue||'')}"></div>
       <div class="fg full"><label class="flb">이슈상세</label><textarea class="fc" id="ane-issue-detail" rows="2">${escapeHTML(n.issue_detail||'')}</textarea></div>
       <div class="fg full"><label class="flb">조치사항</label><textarea class="fc" id="ane-action" rows="2">${escapeHTML(n.action_text||'')}</textarea></div>
@@ -1232,6 +1496,7 @@ function cancelAreaNoteEdit(){
 async function saveAreaNoteEdit(id){
   const date=document.getElementById('ane-date').value||null;
   const brandId=document.getElementById('ane-brand').value;
+  const categoryId=document.getElementById('ane-category')?.value||'';
   const mainIssue=document.getElementById('ane-main-issue').value.trim();
   const detail=document.getElementById('ane-issue-detail').value.trim();
   const action=document.getElementById('ane-action').value.trim();
@@ -1239,8 +1504,8 @@ async function saveAreaNoteEdit(id){
   const btn=document.getElementById('ane-save-btn');
   btn.textContent='저장 중...'; btn.disabled=true;
   const {error}=await sb.from('area_notes').update({
-    note_date:date, brand_id:parseInt(brandId), main_issue:mainIssue,
-    issue_detail:detail||null, action_text:action||null
+    note_date:date, brand_id:parseInt(brandId), category_id: categoryId?parseInt(categoryId):null,
+    main_issue:mainIssue, issue_detail:detail||null, action_text:action||null
   }).eq('id',id);
   if(error){ btn.textContent='저장'; btn.disabled=false; showToast('저장 실패: '+error.message); return; }
   showToast('수정 완료!');
@@ -1319,6 +1584,23 @@ function renderHighDiv(risks){
       <td>${escapeHTML(r.title||'-')}</td><td>${stateBadge(r.item_state)}</td>
     </tr>`).join('');
   startHighRotate('high-ticker-div');
+}
+
+// 영역뷰(측정판 옆) 최근 모니터링 현황 — renderHighMain/Div와 동일 패턴, 별도 ID로 렌더
+function renderHighArea(risks){
+  const list=sortByRecent(applyStateFilter(risks,'high-state-filter-area'));
+  const cntEl=document.getElementById('high-cnt-area');
+  if(cntEl) cntEl.textContent=`총 ${list.length}건`;
+  const b=document.getElementById('high-body-area');
+  if(!b) return;
+  if(!list.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px;font-size:12px">데이터 없음</td></tr>';stopHighRotate();return;}
+  b.innerHTML=list.map(r=>`
+    <tr onclick="openEdit('${r.id}')">
+      <td style="white-space:nowrap">${fmtD(r.registered_at)}</td>
+      <td>${r.divisions?.name||'-'}</td><td>${r.brands?.name||'-'}</td>
+      <td>${escapeHTML(r.title||'-')}</td><td>${stateBadge(r.item_state)}</td>
+    </tr>`).join('');
+  startHighRotate('high-ticker-area');
 }
 
 // ── 자동 순환 (메인뷰 위험도별 분류) ───────
