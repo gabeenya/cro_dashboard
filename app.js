@@ -1198,11 +1198,13 @@ function renderMatrix(risks){
       avgScore=validCells.reduce((s,c)=>s+GRADE_POINT[c.grade],0)/validCells.length;
       overall=scoreToOverallGrade(avgScore);
     }
-    return {ent, cells, overall, avgScore};
+    const fCount=cells.filter(c=>c.grade==='F').length;
+    return {ent, cells, overall, avgScore, fCount};
   });
 
-  // 평균 점수 좋은 순으로 정렬, 데이터 없는 법인/브랜드는 맨 아래
-  const sorted=[...rowsData].sort((a,b)=>(b.avgScore??-1)-(a.avgScore??-1));
+  // 평균 점수 좋은 순으로 정렬. 점수가 같으면 F등급 영역이 적은 쪽이 상위(동점자는 F 개수로 재정렬).
+  // 데이터 없는 법인/브랜드는 맨 아래
+  const sorted=[...rowsData].sort((a,b)=>(b.avgScore??-1)-(a.avgScore??-1) || a.fCount-b.fCount);
   const drillDivId=scopeDivObj?scopeDivObj.id:null;
 
   body.innerHTML=sorted.map((row,i)=>{
