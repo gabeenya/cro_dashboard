@@ -1228,7 +1228,7 @@ function renderMatrix(risks){
       if(!c.grade) return `<td><span class="cp-none">—</span></td>`;
       return `<td><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><br><span class="gc-frac"><span class="gc-num">${c.num}</span>/${c.den}</span></td>`;
     }).join('');
-    return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.45}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
+    return `<tr class="mx-row-in${dim?' mx-row-dim':''}" style="animation-delay:${Math.min(i,14)*0.7}s"><td class="rank-col">${rankHtml}</td><td class="name-col">${row.ent.name}</td><td class="overall-col">${overallHtml}</td>${cellsHtml}</tr>`;
   }).join('');
 
   // LIVE 배지(스냅샷/기준월 조회 중이 아닐 때만) · 기간 라벨
@@ -3620,7 +3620,7 @@ function startLiveTicker(){
     renderKPI(getFiltered());
     renderMatrix(getFiltered());
     renderAuditKPI(getFiltered());
-  },10000);
+  },28700);
 }
 
 // 차트(추이·도넛·계열사 막대)가 스크롤로 다시 화면에 들어올 때마다 애니메이션이 재생되도록.
