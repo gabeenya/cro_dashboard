@@ -339,7 +339,7 @@ async function loadMaster(){
     allCats.forEach(x=>{document.getElementById(id).innerHTML+=`<option value="${x.id}">${x.name}</option>`;});
   });
   // 영역별 특이사항 입력 폼의 브랜드 드롭다운 (계열사명 함께 표시)
-  const brandOptions=allBrands.map(b=>{
+  const brandOptions=visibleBrands(allBrands).map(b=>{
     const dv=allDiv.find(d=>d.id===b.division_id);
     return {id:b.id, name: dv?`${dv.name} - ${b.name}`:b.name};
   });
@@ -347,6 +347,15 @@ async function loadMaster(){
   fillSel('an-category',allCats,'선택 안 함');
 }
 
+// '유통'의 브랜드 목록에서 '기타'는 어디서도 노출하지 않음(다른 계열사의 '기타'는 그대로 둠)
+function visibleBrands(list){
+  const distId=allDiv.find(d=>d.name==='유통')?.id;
+  return list.filter(b=>!(b.division_id===distId && b.name==='기타'));
+}
+// 유통 매장명 앞의 소속 접두사(뉴코아/NC/2001/팩토리)는 화면에 표시하지 않음
+function storeDisplayName(name){
+  return (name||'').replace(/^(뉴코아|NC|2001|팩토리)\s+/, '');
+}
 function fillSel(id,items,ph){
   const el=document.getElementById(id); if(!el) return;
   el.innerHTML=`<option value="">${ph}</option>`;
@@ -580,7 +589,7 @@ function setDiv(name,el){
   document.getElementById('page-crumb').textContent=name||'전사 8대 리스크 관리 현황';
   // 브랜드 필터 갱신
   const dObj=allDiv.find(d=>d.name===name);
-  const brands=name?allBrands.filter(b=>b.division_id===dObj?.id):allBrands;
+  const brands=visibleBrands(name?allBrands.filter(b=>b.division_id===dObj?.id):allBrands);
   fillSel('f-brand',brands,'전체 브랜드/조직');
   document.getElementById('f-brand').value='';
   // 측정판의 계열사/브랜드 전환 드롭다운: 계열사뷰로 들어가면 그 계열사의 브랜드 기준으로, 전사뷰면 전체(계열사별)로
@@ -656,7 +665,7 @@ function updateFbarSelects(){
       if(fs.options.length<=1){
         const divObj=allDiv.find(d=>d.name==='유통');
         const stores=divObj?allStores.filter(s=>s.division_id===divObj.id):[];
-        fs.innerHTML='<option value="">전체 매장</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+        fs.innerHTML='<option value="">전체 매장</option>'+stores.map(s=>`<option value="${s.id}">${storeDisplayName(s.name)}</option>`).join('');
       }
     } else {
       fs.value='';
@@ -1161,7 +1170,7 @@ function renderMatrix(risks){
 
   let entities, entityLabel;
   if(scopeDivObj){
-    entities=allBrands.filter(b=>b.division_id===scopeDivObj.id).map(b=>({id:b.id,name:b.name,brand:true}));
+    entities=visibleBrands(allBrands.filter(b=>b.division_id===scopeDivObj.id)).map(b=>({id:b.id,name:b.name,brand:true}));
     entityLabel='브랜드';
   } else {
     entities=(activeDiv?allDiv.filter(d=>d.name===activeDiv):allDiv).map(d=>({id:d.id,name:d.name,brand:false}));
@@ -1472,10 +1481,16 @@ function renderAreaNotesList(){
   if(pgnEl) pgnEl.innerHTML=buildPagination(areaNotePage,tp,page=>`areaNotePage=${page};renderAreaNotesList()`);
 }
 function buildAreaNoteEditRow(n){
+  let noteBrands=visibleBrands(allBrands);
+  // 기존에 '기타'로 등록된 항목을 열었을 때 브랜드가 비워지지 않도록 현재 값은 목록에 유지
+  if(n.brand_id && !noteBrands.some(b=>b.id===n.brand_id)){
+    const kb=allBrands.find(b=>b.id===n.brand_id);
+    if(kb) noteBrands=[...noteBrands, kb];
+  }
   return `<tr class="ier-row" onclick="event.stopPropagation()"><td colspan="7">
     <div class="ier-form">
       <div class="fg"><label class="flb">날짜</label><input type="date" class="fc" id="ane-date" value="${n.note_date||''}"></div>
-      <div class="fg"><label class="flb">브랜드명 *</label><select class="fc" id="ane-brand">${allBrands.map(b=>{const dv=allDiv.find(d=>d.id===b.division_id);return `<option value="${b.id}" ${b.id===n.brand_id?'selected':''}>${dv?`${dv.name} - ${b.name}`:b.name}</option>`;}).join('')}</select></div>
+      <div class="fg"><label class="flb">브랜드명 *</label><select class="fc" id="ane-brand">${noteBrands.map(b=>{const dv=allDiv.find(d=>d.id===b.division_id);return `<option value="${b.id}" ${b.id===n.brand_id?'selected':''}>${dv?`${dv.name} - ${b.name}`:b.name}</option>`;}).join('')}</select></div>
       <div class="fg"><label class="flb">영역</label><select class="fc" id="ane-category"><option value="">선택 안 함</option>${allCats.map(c=>`<option value="${c.id}" ${c.id===n.category_id?'selected':''}>${c.name}</option>`).join('')}</select></div>
       <div class="fg full"><label class="flb">주요이슈 *</label><input type="text" class="fc" id="ane-main-issue" value="${escapeHTML(n.main_issue||'')}"></div>
       <div class="fg full"><label class="flb">이슈상세</label><textarea class="fc" id="ane-issue-detail" rows="2">${escapeHTML(n.issue_detail||'')}</textarea></div>
@@ -1671,7 +1686,7 @@ function renderDivisionBarChart(risks){
 // ── 브랜드 카드 ────────────────────────────
 function renderBrandGrid(risks){
   const dObj=allDiv.find(d=>d.name===activeDiv);
-  const brands=activeDiv?allBrands.filter(b=>b.division_id===dObj?.id):allBrands;
+  const brands=visibleBrands(activeDiv?allBrands.filter(b=>b.division_id===dObj?.id):allBrands);
   // 타이틀: 전체뷰=계열사별 현황, 계열사뷰=브랜드별 현황
   document.getElementById('bg-label').textContent=activeDiv||'';
   const g=document.getElementById('brand-grid');
@@ -1739,7 +1754,7 @@ function renderBrandGrid(risks){
 // ── 모니터링 리스트 ─────────────────────────
 function onLfDivChange(){
   const divId=document.getElementById('lf-div').value;
-  fillSel('lf-brand',divId?allBrands.filter(b=>b.division_id==divId):allBrands,'전체 브랜드/조직');
+  fillSel('lf-brand',visibleBrands(divId?allBrands.filter(b=>b.division_id==divId):allBrands),'전체 브랜드/조직');
   lPage=1; renderList();
 }
 // 영역 대분류 선택 시 해당 중분류만 채우기 (모니터링 리스트 필터)
@@ -2142,7 +2157,7 @@ function selectState(prefix,val){
 // ── 데이터 입력 ─────────────────────────────
 async function onPDiv(){
   const divId=document.getElementById('p-div').value;
-  const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
+  const brands=visibleBrands(divId?allBrands.filter(b=>b.division_id==divId):[]);
   const el=document.getElementById('p-brand');
   el.innerHTML='<option value="">선택 안 함</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
@@ -2166,7 +2181,7 @@ function toggleStoreDropdown(prefix, divObj, brandObj, divId){
   if(!wrap||!sel) return;
   if(divObj?.name==='유통' && brandObj?.name==='리테일'){
     const stores=allStores.filter(s=>s.division_id==divId);
-    sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${storeDisplayName(s.name)}</option>`).join('');
     wrap.classList.remove('hidden-fg');
   } else {
     sel.innerHTML='<option value="">선택 (선택사항)</option>';
@@ -2345,7 +2360,7 @@ async function downloadBulkTemplate(){
   // 각 계열사의 브랜드, 각 영역 대분류의 영역 중분류를 가로로 배치
   let col=5; // E열부터
   allDiv.forEach(div=>{
-    const brands=allBrands.filter(b=>b.division_id===div.id);
+    const brands=visibleBrands(allBrands.filter(b=>b.division_id===div.id));
     if(brands.length===0) return;
     const L=colToLetter(col);
     ref.getCell(`${L}1`).value=div.name;
@@ -2732,7 +2747,9 @@ function renderRecentBody(){
 function buildInlineEditRow(r){
   const curState=r.item_state||'';
   const subs=allSubs.filter(s=>s.category_id===r.risk_categories?.id);
-  const brands=allBrands.filter(b=>b.division_id===r.divisions?.id);
+  let brands=visibleBrands(allBrands.filter(b=>b.division_id===r.divisions?.id));
+  // 기존에 '기타'로 등록된 리스크를 열었을 때 브랜드가 비워지지 않도록 현재 값은 목록에 유지
+  if(r.brands?.id && !brands.some(b=>b.id===r.brands.id)) brands=[...brands, r.brands];
   const showStore=r.divisions?.name==='유통' && r.brands?.name==='리테일';
   const stores=showStore?allStores.filter(s=>s.division_id===r.divisions?.id):[];
   const curStoreId=r.store_id||'';
@@ -2760,7 +2777,7 @@ function buildInlineEditRow(r){
         <label class="flb">매장 (유통 전용)</label>
         <select class="fc" id="ie-store">
           <option value="">선택 (선택사항)</option>
-          ${stores.map(s=>`<option value="${s.id}" ${s.id==curStoreId?'selected':''}>${s.name}</option>`).join('')}
+          ${stores.map(s=>`<option value="${s.id}" ${s.id==curStoreId?'selected':''}>${storeDisplayName(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="fg">
@@ -2830,7 +2847,7 @@ function cancelInline(){
 }
 function onIEDiv(){
   const divId=document.getElementById('ie-div').value;
-  const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
+  const brands=visibleBrands(divId?allBrands.filter(b=>b.division_id==divId):[]);
   const el=document.getElementById('ie-brand');
   el.innerHTML='<option value="">선택 안 함</option>'+brands.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
   toggleIEStore();
@@ -2846,7 +2863,7 @@ function toggleIEStore(){
   if(!wrap||!sel) return;
   if(divObj?.name==='유통' && brandObj?.name==='리테일'){
     const stores=allStores.filter(s=>s.division_id==divId);
-    sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    sel.innerHTML='<option value="">선택 (선택사항)</option>'+stores.map(s=>`<option value="${s.id}">${storeDisplayName(s.name)}</option>`).join('');
     wrap.classList.remove('hidden-fg');
   } else {
     sel.innerHTML='<option value="">선택 (선택사항)</option>';
@@ -2929,7 +2946,7 @@ function openEdit(id){
   editId=id;
   const r=allRisks.find(x=>x.id===id); if(!r) return;
   document.getElementById('m-div').value=r.divisions?.id||'';
-  onMDiv().then(()=>{
+  onMDiv(r.brands?.id).then(()=>{
     document.getElementById('m-brand').value=r.brands?.id||'';
     onMBrand();
     const ms=document.getElementById('m-store'); if(ms && r.store_id) ms.value=r.store_id;
@@ -2962,9 +2979,14 @@ function openEdit(id){
 }
 function closeModal(){document.getElementById('mo-ov').classList.remove('open');editId=null;}
 function handleOvClick(e){if(e.target.id==='mo-ov') closeModal();}
-async function onMDiv(){
+async function onMDiv(keepBrandId){
   const divId=document.getElementById('m-div').value;
-  const brands=divId?allBrands.filter(b=>b.division_id==divId):[];
+  let brands=visibleBrands(divId?allBrands.filter(b=>b.division_id==divId):[]);
+  // 기존에 '기타'로 등록된 리스크를 수정할 때 브랜드가 비워지지 않도록 현재 값은 목록에 유지
+  if(keepBrandId && !brands.some(b=>b.id==keepBrandId)){
+    const kb=allBrands.find(b=>b.id==keepBrandId);
+    if(kb) brands=[...brands, kb];
+  }
   const el=document.getElementById('m-brand');
   el.innerHTML='<option value="">선택 안 함</option>';
   brands.forEach(b=>{el.innerHTML+=`<option value="${b.id}">${b.name}</option>`;});
@@ -3338,7 +3360,7 @@ async function downloadPPT(){
   // ── 슬라이드 4~: 계열사별 브랜드/조직 순위 (계열사마다 1장) ──
   const RANK_C=RPT.RED;     // 순위 색 = 붉은색
   const VIOL_C=RPT.NAVY2;   // 위반건수 색 = 순위와 다르게(네이비)
-  const DIST_MINI=['글로벌','팜앤푸드','킴스','기타']; // 유통: 순위 제외 + 하단 별도 순위
+  const DIST_MINI=['글로벌','팜앤푸드','킴스']; // 유통: 순위 제외 + 하단 별도 순위 ('기타'는 노출 안 함)
 
   // 표준 순위표 (순위 빨강 / 위반건수 네이비)
   function rankTable(sl, data, nameHdr, top, bottom){
@@ -3368,7 +3390,7 @@ async function downloadPPT(){
         const items=baseRisks.filter(r=>r.store_id===s.id);
         const viol=cViol(items);
         const total=cAll(items);
-        return {name:s.name, viol, total, rate:rPct(viol,total)};
+        return {name:storeDisplayName(s.name), viol, total, rate:rPct(viol,total)};
       }).sort((a,b)=> b.viol-a.viol || b.total-a.total);
       if(storeRanks.length){
         // 표를 위로 올리고(mTop↓), 행 수가 많으면 글자를 줄여 슬라이드를 벗어나지 않게 함
@@ -3400,8 +3422,8 @@ async function downloadPPT(){
       } else {
         sl.addText('(리테일 매장 데이터 없음)',{x:0.4,y:3.0,w:12.5,h:0.4,fontSize:11,color:RPT.TEXT3,italic:true,align:'center',fontFace:RPT.FONT});
       }
-      // 유통(2): 글로벌 · 팜앤푸드 · 킴스 · 기타 순위 — 별도 한 장
-      const sl2=pptx.addSlide(); head(sl2,'유통 — 글로벌 · 팜앤푸드 · 킴스 · 기타 순위','위반+완료 건수 많은 순');
+      // 유통(2): 글로벌 · 팜앤푸드 · 킴스 순위 — 별도 한 장
+      const sl2=pptx.addSlide(); head(sl2,'유통 — 글로벌 · 팜앤푸드 · 킴스 순위','위반+완료 건수 많은 순');
       const four=DIST_MINI.map(nm=>{
         const b=allBrands.find(x=>x.division_id===dv.id&&x.name===nm);
         const items=b?baseRisks.filter(r=>r.brands?.id===b.id):[];
@@ -3412,7 +3434,7 @@ async function downloadPPT(){
       rankTable(sl2, four, '브랜드/조직', 1.95, 6.95);
     } else {
       const sl=pptx.addSlide(); head(sl,`${dv.name} 브랜드/조직 순위`,'위반+완료 건수 적은 순 → 많은 순');
-      const data=allBrands.filter(b=>b.division_id===dv.id).map(b=>{
+      const data=visibleBrands(allBrands.filter(b=>b.division_id===dv.id)).map(b=>{
         const items=baseRisks.filter(r=>r.brands?.id===b.id);
         const viol=cViol(items);
         const total=cAll(items);
