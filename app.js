@@ -2315,20 +2315,22 @@ async function downloadBulkTemplate(){
   ws.columns=[
     {header:'등록일(YYYY-MM-DD) *',key:'date',width:22},
     {header:'계열사 *',key:'div',width:14},
-    {header:'브랜드/조직 *',key:'brand',width:22},
+    {header:'브랜드/조직',key:'brand',width:22},
     {header:'영역 대분류 *',key:'cat',width:20},
     {header:'영역 중분류',key:'sub',width:24},
     {header:'리스크명 *',key:'title',width:36},
     {header:'상태 *',key:'state',width:12},
     {header:'건수 *',key:'cnt',width:10},
     {header:'조치구분(징계/징계 외)',key:'actType',width:22},
-    {header:'대상자(징계 시)',key:'actName',width:16},
-    {header:'양형/처분(징계 시)',key:'actPen',width:18},
+    {header:'대상자(징계 시/감사 시 필수)',key:'actName',width:18},
+    {header:'양형/처분(징계 시/감사 시 필수)',key:'actPen',width:20},
     {header:'조치내용(징계 외 시)',key:'actOther',width:30},
     {header:'위반유형',key:'vtype',width:26},
     {header:'금액(부실채권 미입금/부실채권 시 필수)',key:'amount',width:32},
     {header:'징계유형(감사 시 필수)',key:'discType',width:22},
-    {header:'외부노출 여부(O 또는 공란)',key:'external',width:20}
+    {header:'외부노출 여부(O 또는 공란)',key:'external',width:20},
+    {header:'매장(유통-리테일 전용)',key:'store',width:22},
+    {header:'비고',key:'note',width:30}
   ];
   const hdr=ws.getRow(1);
   hdr.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
@@ -2419,6 +2421,20 @@ async function downloadBulkTemplate(){
     wb.definedNames.add(`_참조!$${L}$2:$${L}$2`,'_external');
     col++;
   }
+  // 매장 목록 ('유통' 계열사 소속 매장 전체 — 브랜드가 '리테일'일 때만 입력)
+  {
+    const distDiv=allDiv.find(d=>d.name==='유통');
+    const stores=distDiv?allStores.filter(s=>s.division_id===distDiv.id):[];
+    const L=colToLetter(col);
+    ref.getCell(`${L}1`).value='__매장__';
+    if(stores.length){
+      stores.forEach((s,i)=>{ ref.getCell(`${L}${i+2}`).value=s.name; });
+      wb.definedNames.add(`_참조!$${L}$2:$${L}$${stores.length+1}`,'_stores');
+    } else {
+      wb.definedNames.add(blankRange,'_stores');
+    }
+    col++;
+  }
 
   // 3) 입력 시트에 데이터 검증 적용 (행 2 ~ 501)
   // 주의: 계열사/대분류/조치구분/징계유형/외부노출처럼 모든 행에 동일한 목록이 적용되는 컬럼은
@@ -2435,6 +2451,7 @@ async function downloadBulkTemplate(){
   ws.dataValidations.add(`I2:I${lastR}`, {type:'list',allowBlank:true,formulae:['_actions']});
   ws.dataValidations.add(`O2:O${lastR}`, {type:'list',allowBlank:true,formulae:['_disctypes']});
   ws.dataValidations.add(`P2:P${lastR}`, {type:'list',allowBlank:true,formulae:['_external']});
+  ws.dataValidations.add(`Q2:Q${lastR}`, {type:'list',allowBlank:true,formulae:['_stores']});
   for(let r=2; r<=ROWS+1; r++){
     ws.getCell(`A${r}`).numFmt='yyyy-mm-dd';
     ws.getCell(`C${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_b_"&SUBSTITUTE(B${r}," ","_"))`]};
@@ -2460,9 +2477,11 @@ async function downloadBulkTemplate(){
     '7. 영역 대분류가 \'감사\'이면 징계유형·대상자·양형/처분이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
     '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'부실채권\'이면 금액이 필수입니다.',
     '9. 외부노출 여부: 해당 건이 외부에 노출됐으면 O를 입력하세요(공란=미노출). 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP)에서는 이 값이 F등급 산정에 사용됩니다.',
-    '10. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
-    '11. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
-    '12. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
+    '10. 매장: 계열사가 \'유통\', 브랜드/조직이 \'리테일\'인 경우에만 입력하세요(선택사항). 드롭다운에서 선택하며, 그 외 계열사/브랜드 조합에서는 공란으로 두세요.',
+    '11. 비고: 자유 입력(선택사항)입니다.',
+    '12. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
+    '13. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
+    '14. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
   ];
   lines.forEach((t,i)=>{ guide.getCell(`A${i+1}`).value=t; });
   guide.getCell('A1').font={bold:true,size:14,color:{argb:'FFC8102E'}};
@@ -2517,6 +2536,8 @@ async function handleBulkUpload(ev){
       else if(t.startsWith('금액')) colMap.amount=colNumber;
       else if(t.startsWith('징계유형')) colMap.discType=colNumber;
       else if(t.startsWith('외부노출')) colMap.external=colNumber;
+      else if(t.startsWith('매장')) colMap.store=colNumber;
+      else if(t.startsWith('비고')) colMap.note=colNumber;
     });
     const missing=['date','div','brand','cat','title','state','cnt'].filter(k=>!colMap[k]);
     if(missing.length){
@@ -2546,6 +2567,8 @@ async function handleBulkUpload(ev){
       const amountStr=colMap.amount?String(row.getCell(colMap.amount).value??'').trim():'';
       const discType=colMap.discType?String(row.getCell(colMap.discType).value||'').trim():'';
       const externalStr=colMap.external?String(row.getCell(colMap.external).value||'').trim():'';
+      const storeName=colMap.store?String(row.getCell(colMap.store).value||'').trim():'';
+      const noteStr=colMap.note?String(row.getCell(colMap.note).value||'').trim():'';
 
       // 전부 비어있으면 skip
       if(!dateCell&&!divName&&!brandName&&!catName&&!title&&!state&&!cntStr) continue;
@@ -2574,6 +2597,17 @@ async function handleBulkUpload(ev){
       if(brandName && divObj){
         brandObj=allBrands.find(b=>b.division_id===divObj.id&&b.name===brandName);
         if(!brandObj) errs.push(`브랜드 '${brandName}'는 '${divName}'에 속하지 않음`);
+      }
+
+      // 매장 — '유통' + '리테일' 조합에서만 입력 가능(선택사항)
+      let storeObj=null;
+      if(storeName){
+        if(divObj?.name==='유통' && brandObj?.name==='리테일'){
+          storeObj=allStores.find(s=>s.division_id===divObj.id&&s.name===storeName);
+          if(!storeObj) errs.push(`매장 '${storeName}'을 찾을 수 없음`);
+        } else {
+          errs.push("매장은 계열사 '유통' + 브랜드 '리테일' 조합에서만 입력 가능");
+        }
       }
 
       const catObj=allCats.find(c=>c.name===catName);
@@ -2634,8 +2668,9 @@ async function handleBulkUpload(ev){
         rows.push({
           division_id:divObj.id, brand_id:brandObj?brandObj.id:null, category_id:catObj.id,
           subcategory_id:subObj?subObj.id:null,
+          store_id:storeObj?storeObj.id:null,
           grade:'안전', item_state:state, registered_at:dateStr, title,
-          status:buildActionStatus(actType,[{name:actName,penalty:actPen}],actOther), note:null,
+          status:buildActionStatus(actType,[{name:actName,penalty:actPen}],actOther), note:noteStr||null,
           violation_count:state==='모니터링'?null:cntVal,
           monitoring_count:state==='모니터링'?cntVal:null,
           violation_type:vtype||null,

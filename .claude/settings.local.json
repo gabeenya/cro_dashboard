@@ -85,7 +85,8 @@
       "Bash(grep -n 'grade-mx-table\\\\|overflow-x:auto' C:/Users/lee_gabeen/Desktop/클로드/cro_dashboard-1/index.html)",
       "Bash(grep *)",
       "Bash(grep -rn \"사용안내서\\\\|guide.html\" index.html app.js login.html)",
-      "Bash(ls -la --time-style=full-iso 사용안내서.md guide.html)"
+      "Bash(ls -la --time-style=full-iso 사용안내서.md guide.html)",
+      "Bash(git log *)"
     ]
   }
 }
