@@ -364,19 +364,30 @@ function fillSel(id,items,ph){
 
 async function loadAll(){
   document.getElementById('conn-status').textContent='로딩 중...';
-  const {data,error}=await sb.from('risks').select(`
-    id,registered_at,title,status,grade,note,created_at,
-    item_state,violation_count,monitoring_count,store_id,violation_type,
-    discipline_type,discipline_name,sentence,amount,external_exposure,source_id,
-    divisions(id,name),brands(id,name),
-    risk_categories(id,name),risk_subcategories(id,name),
-    stores(id,name)
-  `).order('created_at',{ascending:false}).range(0,49999);
-  if(error){document.getElementById('conn-status').textContent='연결 오류';showToast('데이터 로드 실패');return;}
-  allRisks=data;
+  // Supabase는 클라이언트가 .range()로 아무리 큰 범위를 요청해도 서버 설정(보통 1000행)에서
+  // 응답을 조용히 잘라버린다(에러 없이 앞쪽 1000건만 옴). created_at 내림차순 정렬이라
+  // 데이터가 1000건을 넘어가면 "오래된 데이터일수록" 화면에서 통째로 사라지는 문제가 있었음
+  // (2026-08-18 발견: 실제로 1451건 중 1000건만 로드되어 오래된 백필분이 대시보드/리스트 어디에도
+  // 안 보였음). 그래서 1000건씩 여러 번 나눠 받아서 끝까지 모은다.
+  const PAGE_SIZE=1000;
+  const all=[];
+  for(let from=0; from<50000; from+=PAGE_SIZE){
+    const {data,error}=await sb.from('risks').select(`
+      id,registered_at,title,status,grade,note,created_at,
+      item_state,violation_count,monitoring_count,store_id,violation_type,
+      discipline_type,discipline_name,sentence,amount,external_exposure,source_id,
+      divisions(id,name),brands(id,name),
+      risk_categories(id,name),risk_subcategories(id,name),
+      stores(id,name)
+    `).order('created_at',{ascending:false}).range(from,from+PAGE_SIZE-1);
+    if(error){document.getElementById('conn-status').textContent='연결 오류';showToast('데이터 로드 실패');return;}
+    all.push(...data);
+    if(data.length<PAGE_SIZE) break; // 마지막 페이지(받은 게 페이지 크기보다 적으면 끝)
+  }
+  allRisks=all;
   // 등급 자동 계산 (DB 저장값 대신 규칙 기반 산정)
   allRisks.forEach(r=>{ r.grade=computeGrade(r,allRisks); });
-  document.getElementById('conn-status').textContent=`데이터 ${data.length}건`;
+  document.getElementById('conn-status').textContent=`데이터 ${allRisks.length}건`;
   updateSidebarBadges();
   fillMonthFilter();
   fillGradeRefMonth();
@@ -2316,6 +2327,7 @@ async function downloadBulkTemplate(){
     {header:'등록일(YYYY-MM-DD) *',key:'date',width:22},
     {header:'계열사 *',key:'div',width:14},
     {header:'브랜드/조직',key:'brand',width:22},
+    {header:'매장(유통+리테일 선택 시에만)',key:'store',width:24},
     {header:'영역 대분류 *',key:'cat',width:20},
     {header:'영역 중분류',key:'sub',width:24},
     {header:'리스크명 *',key:'title',width:36},
@@ -2329,7 +2341,6 @@ async function downloadBulkTemplate(){
     {header:'금액(부실채권 미입금/부실채권 시 필수)',key:'amount',width:32},
     {header:'징계유형(감사 시 필수)',key:'discType',width:22},
     {header:'외부노출 여부(O 또는 공란)',key:'external',width:20},
-    {header:'매장(유통-리테일 전용)',key:'store',width:22},
     {header:'비고',key:'note',width:30}
   ];
   const hdr=ws.getRow(1);
@@ -2447,17 +2458,18 @@ async function downloadBulkTemplate(){
   const ROWS=500;
   const lastR=ROWS+1;
   ws.dataValidations.add(`B2:B${lastR}`, {type:'list',allowBlank:true,formulae:['_divs'],showErrorMessage:true,errorTitle:'잘못된 값',error:'드롭다운에서 선택하세요.'});
-  ws.dataValidations.add(`D2:D${lastR}`, {type:'list',allowBlank:true,formulae:['_cats']});
-  ws.dataValidations.add(`I2:I${lastR}`, {type:'list',allowBlank:true,formulae:['_actions']});
-  ws.dataValidations.add(`O2:O${lastR}`, {type:'list',allowBlank:true,formulae:['_disctypes']});
-  ws.dataValidations.add(`P2:P${lastR}`, {type:'list',allowBlank:true,formulae:['_external']});
-  ws.dataValidations.add(`Q2:Q${lastR}`, {type:'list',allowBlank:true,formulae:['_stores']});
+  ws.dataValidations.add(`E2:E${lastR}`, {type:'list',allowBlank:true,formulae:['_cats']});
+  ws.dataValidations.add(`J2:J${lastR}`, {type:'list',allowBlank:true,formulae:['_actions']});
+  ws.dataValidations.add(`P2:P${lastR}`, {type:'list',allowBlank:true,formulae:['_disctypes']});
+  ws.dataValidations.add(`Q2:Q${lastR}`, {type:'list',allowBlank:true,formulae:['_external']});
   for(let r=2; r<=ROWS+1; r++){
     ws.getCell(`A${r}`).numFmt='yyyy-mm-dd';
     ws.getCell(`C${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_b_"&SUBSTITUTE(B${r}," ","_"))`]};
-    ws.getCell(`E${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_s_"&SUBSTITUTE(D${r}," ","_"))`]};
-    ws.getCell(`G${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_st_"&SUBSTITUTE(D${r}," ","_"))`]};
-    ws.getCell(`M${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_v_"&SUBSTITUTE(D${r}," ","_"))`]};
+    // 매장: 계열사='유통' + 브랜드='리테일'일 때만 매장 목록을, 그 외에는 빈 목록을 보여줌(사실상 비활성)
+    ws.getCell(`D${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`IF(AND(B${r}="유통",C${r}="리테일"),_stores,${blankRange})`]};
+    ws.getCell(`F${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_s_"&SUBSTITUTE(E${r}," ","_"))`]};
+    ws.getCell(`H${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_st_"&SUBSTITUTE(E${r}," ","_"))`]};
+    ws.getCell(`N${r}`).dataValidation={type:'list',allowBlank:true,formulae:[`INDIRECT("_v_"&SUBSTITUTE(E${r}," ","_"))`]};
   }
 
   // 4) 안내 시트
@@ -2468,20 +2480,20 @@ async function downloadBulkTemplate(){
     '',
     '1. \'입력\' 시트 2행부터 데이터를 입력하세요.',
     '2. 별표(*) 표시 컬럼은 필수입니다. (건수 포함)',
-    '3. 계열사 / 브랜드 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분 / 위반유형 / 징계유형은 드롭다운에서 선택하세요.',
+    '3. 계열사 / 브랜드 / 매장 / 영역 대분류 / 영역 중분류 / 상태 / 조치구분 / 위반유형 / 징계유형은 드롭다운에서 선택하세요.',
     '4. 브랜드는 계열사를, 영역 중분류·위반유형·상태는 영역 대분류를 먼저 선택하면 자동 필터됩니다(대분류를 먼저 선택하지 않으면 목록이 비어 있습니다).',
     '4-1. 위반유형은 영역 대분류에 목록이 있으면 필수입니다. 단 \'IP\'는 위반유형 목록이 없어 선택하지 않습니다(공란으로 두세요).',
+    '4-2. 매장(브랜드 바로 오른쪽 열)은 계열사가 \'유통\', 브랜드/조직이 \'리테일\'일 때만 드롭다운에 목록이 뜹니다(선택사항). 그 외 조합에서는 목록이 비어 있으니 공란으로 두세요.',
     '5. 등록일은 YYYY-MM-DD 형식 (예: 2026-05-29).',
     '6. 건수는 0 이상 숫자로 입력하세요. (상태가 모니터링/발생/적발이면 모니터링 건수, 위반/완료/해결/조치완료면 위반 건수로 집계)',
     '6-1. 상태 옵션은 영역마다 다릅니다 — 부실채권: 발생/해결, 감사: 적발/조치완료, 중대재해: 발생/조치완료, 그 외 영역: 모니터링/위반/완료.',
     '7. 영역 대분류가 \'감사\'이면 징계유형·대상자·양형/처분이 모두 필수입니다. 조치구분·조치내용은 일반 조치사항 기록용(선택 입력)입니다.',
     '8. 금액: 영역 대분류가 \'부실채권\'이고 위반유형이 \'미입금\' 또는 \'부실채권\'이면 금액이 필수입니다.',
     '9. 외부노출 여부: 해당 건이 외부에 노출됐으면 O를 입력하세요(공란=미노출). 컴플라이언스 분류(불법파견/공정거래/영업비밀/IP)에서는 이 값이 F등급 산정에 사용됩니다.',
-    '10. 매장: 계열사가 \'유통\', 브랜드/조직이 \'리테일\'인 경우에만 입력하세요(선택사항). 드롭다운에서 선택하며, 그 외 계열사/브랜드 조합에서는 공란으로 두세요.',
-    '11. 비고: 자유 입력(선택사항)입니다.',
-    '12. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
-    '13. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
-    '14. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
+    '10. 비고: 자유 입력(선택사항)입니다.',
+    '11. 등급(A/B/C/D/F)은 시스템이 자동 산정합니다 — 입력하지 마세요.',
+    '12. 작성 후 저장하고, \'엑셀 업로드\' 버튼으로 업로드하세요.',
+    '13. 업로드 전에 검증 결과(오류 행 안내)를 확인할 수 있습니다.'
   ];
   lines.forEach((t,i)=>{ guide.getCell(`A${i+1}`).value=t; });
   guide.getCell('A1').font={bold:true,size:14,color:{argb:'FFC8102E'}};

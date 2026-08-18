@@ -21,15 +21,22 @@
 //   - 브랜드: records.brand 이름 그대로 매칭. 없으면 '기타'로.
 //   - item_state: status 그대로 (완료/모니터링/위반). 단 부실채권(발생/해결)·감사(적발/조치완료)·중대재해(발생/조치완료)는 우리 쪽 상태값에 맞춰 변환(STATE_REMAP).
 //   - 건수: 모니터링이면 monitoring_count, 그 외(완료/위반)면 violation_count
-//   - 부실채권: subtype(미입금/2개월 초과 미입금)을 violation_type으로, bc_amount를 amount로 저장(금액 기준 D/F 등급 판정에 사용됨)
+//   - 부실채권: subtype을 violation_type으로, bc_amount를 amount로 저장(금액 기준 D/F 등급 판정에 사용됨).
+//     외식BG의 subtype 값 '2개월 초과 미입금'은 우리 쪽 이름 '부실채권'으로 치환(BAD_DEBT_SUBTYPE_REMAP,
+//     2026-07-08 app.js 쪽에서 위반유형 이름을 '2개월 초과 미입금'→'부실채권'으로 바꿨는데 이 함수는
+//     그때 안 맞춰져 있었음 — 그대로 두면 금액 기준 D/F 판정(calcCategoryGrade)이 조용히 안 걸림).
+//     '미입금'은 그대로 통과.
 //   - 중대재해: subtype을 violation_type으로 그대로 저장('중대재해 발생'이면 F등급 조건에 걸림)
+//   - (2026-08-18 추가) 영업비밀/공정거래/불법파견/감사도 subtype을 violation_type으로 저장.
+//     예전엔 부실채권·중대재해만 violation_type을 채우고 나머지는 전부 null로 저장하고 있었음
+//     (title에만 subtype이 들어가고 violation_type엔 안 들어감) — 위반유형별 필터/집계가 이 카테고리들에서
+//     항상 비어 보이는 원인이었음. IP는 app.js에 위반유형 목록 자체가 없어서(수동입력도 선택 불가) 계속 null.
+//     VIOLATION_TYPE_CATEGORIES 참고.
 //   - 감사: jng_type(징계유형, "선택 안함"→null)→discipline_type, jg_name→discipline_name, jg_sent→sentence
 //   - 외부노출: exposed(boolean, 전 영역 공통)를 external_exposure로 저장(컴플라이언스 분류 F등급 조건에 사용됨)
 //   - registered_at: date,  note: note,  title(필수): subtype
 //   - source_id: 상대 record.id (수정/삭제 때 짝을 찾기 위한 꼬리표)
 //   - (2026-07-06 밤 변경) 기준월 제외 규칙 제거 — 이제 등록 월과 무관하게 전 기간 동기화(전체 백필 대응)
-//   - (2026-07-27 추가) source_updated_at: 상대 records.updated_at을 그대로 저장해두고,
-//     웹훅이 몰려서 도착 순서가 뒤바뀌어도(대량 백필 등) 더 과거 이벤트가 최신 값을 덮어쓰지 못하게 막음.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -85,6 +92,14 @@ const DISCIPLINE_TYPE_MAP: Record<string, string | null> = {
   "중징계": "중징계",
   "형사고발": "형사고발",
 };
+// 외식BG 부실채권 subtype → 우리 쪽 violation_type 이름. 매핑에 없는 값(예: '미입금')은 그대로 통과.
+const BAD_DEBT_SUBTYPE_REMAP: Record<string, string> = {
+  "2개월 초과 미입금": "부실채권",
+};
+// subtype을 violation_type으로 저장할 카테고리. IP는 app.js에 위반유형 개념 자체가 없어서 제외(계속 null).
+const VIOLATION_TYPE_CATEGORIES = new Set([
+  "부실채권", "중대재해", "영업비밀", "공정거래", "불법파견", "감사",
+]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -172,11 +187,15 @@ Deno.serve(async (req) => {
     const state = STATE_REMAP[category]?.[rawState] ?? rawState;
     const cnt = rec.count != null ? Number(rec.count) : null;
     const isMon = state === "모니터링";
-    // 부실채권: subtype(미입금/2개월 초과 미입금)을 위반유형으로, bc_amount를 금액으로 사용.
-    // 중대재해: subtype을 위반유형으로 그대로 넘김('중대재해 발생'이면 F등급 조건에 걸림).
-    const violationType = (category === "부실채권" || category === "중대재해")
-      ? (String(rec.subtype ?? "").trim() || null)
-      : null;
+    // 부실채권: subtype을 위반유형으로(단 BAD_DEBT_SUBTYPE_REMAP으로 이름 치환), bc_amount를 금액으로 사용.
+    // 중대재해/영업비밀/공정거래/불법파견/감사: subtype을 위반유형으로 그대로 저장.
+    // IP는 위반유형 개념이 없어 계속 null(VIOLATION_TYPE_CATEGORIES 참고).
+    const rawSubtype = String(rec.subtype ?? "").trim();
+    const violationType = !VIOLATION_TYPE_CATEGORIES.has(category)
+      ? null
+      : category === "부실채권"
+      ? (BAD_DEBT_SUBTYPE_REMAP[rawSubtype] || rawSubtype || null)
+      : (rawSubtype || null);
     const amount = category === "부실채권" && rec.bc_amount != null ? Number(rec.bc_amount) : null;
     // 감사: 징계유형/징계자명/양형
     const disciplineType = category === "감사"
