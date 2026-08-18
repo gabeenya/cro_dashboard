@@ -490,6 +490,16 @@ function getAreaViewCategory(){
   if(!v) return null;
   return allCats.find(c=>c.id==v) || null;
 }
+// 특정 브랜드/조직을 골라 보고 있는지(유통-리테일은 매장별 상세가 따로 있어 제외).
+// true면 측정판·감사 KPI 4장·조치사항 판을 숨기고 상단 KPI 4장 위주로 보여준다.
+function isBrandDetailView(){
+  if(!activeDiv) return false;
+  const brandVal=document.getElementById('f-brand')?.value;
+  if(!brandVal) return false;
+  const brandObj=allBrands.find(b=>b.id==brandVal);
+  if(activeDiv==='유통' && brandObj?.name==='리테일') return false;
+  return true;
+}
 function gradeTier(cnt){
   if(cnt<=3) return 'A';
   if(cnt<=6) return 'B';
@@ -718,14 +728,16 @@ function renderDash(risks){
   }
   // 영역뷰: 측정판 카드를 좁히고 옆에 '최근 모니터링 현황'을 붙임(위 section-main/div 대체).
   // 감사 영역은 측정판·특이사항판 자체가 의미 없어(감사 전용 KPI/조치사항 판이 따로 있음) 통째로 숨김.
+  // 특정 브랜드/조직을 골라 보고 있을 때도(유통-리테일 제외) 측정판은 의미가 없어 숨김.
   const isAudit=areaCat?.name==='감사';
+  const isBrandView=isBrandDetailView();
   const matrixRow=document.getElementById('matrix-row');
   const areaRecentCard=document.getElementById('area-recent-card');
   const areaNotesCard=document.getElementById('area-notes-card');
-  if(matrixRow){ matrixRow.style.display=isAudit?'none':''; matrixRow.classList.toggle('area-view', !!areaCat && !isAudit); }
-  if(areaRecentCard) areaRecentCard.style.display=(areaCat && !isAudit)?'':'none';
+  if(matrixRow){ matrixRow.style.display=(isAudit||isBrandView)?'none':''; matrixRow.classList.toggle('area-view', !!areaCat && !isAudit && !isBrandView); }
+  if(areaRecentCard) areaRecentCard.style.display=(areaCat && !isAudit && !isBrandView)?'':'none';
   if(areaNotesCard) areaNotesCard.style.display=isAudit?'none':'';
-  if(areaCat && !isAudit) renderHighArea(risks); // section-main/div보다 나중에 호출해 자동 스크롤 타이머가 실제 보이는 티커에 바인딩되게 함
+  if(areaCat && !isAudit && !isBrandView) renderHighArea(risks); // section-main/div보다 나중에 호출해 자동 스크롤 타이머가 실제 보이는 티커에 바인딩되게 함
   // renderTrend도 감사일 땐 자체 티커(trend-audit-wrap)를 돌리므로 반드시 맨 마지막에 호출한다.
   // (renderHighMain/Div도 공용 타이머(highRotateTimer)를 쓰기 때문에, 이보다 먼저 호출하면
   //  방금 시작한 감사 티커가 곧바로 renderHighMain/Div 쪽으로 뺏겨 멈춰버렸었음)
@@ -1277,8 +1289,9 @@ let auditPage=1; const AUDIT_PER=5;
 function renderAuditKPI(risks){
   // 감사 KPI 4장 + 조치사항 판: 전체 영역(필터 없음)이거나 '감사'를 선택했을 때 노출.
   // 그 외 특정 영역(중대재해 등)을 선택했을 때만 숨김(관련없는 0만 보여 혼란을 주므로).
+  // 특정 브랜드/조직을 골라 보고 있을 때도(유통-리테일 제외) 숨김 — 그룹 전체 감사 판이라 브랜드 단위와 안 맞음.
   const selectedCat = allCats.find(c=>c.id==document.getElementById('f-cat')?.value);
-  const isAuditView = !selectedCat || selectedCat.name==='감사';
+  const isAuditView = !isBrandDetailView() && (!selectedCat || selectedCat.name==='감사');
   const auditHd=document.getElementById('audit-kpi-hd'), auditRow=document.getElementById('audit-kpi-row'), auditActionCard=document.getElementById('audit-action-card');
   if(auditHd) auditHd.style.display=isAuditView?'':'none';
   if(auditRow) auditRow.style.display=isAuditView?'':'none';
@@ -1402,6 +1415,10 @@ function renderAreaNotesDashboard(){
       const brand=allBrands.find(b=>b.id===n.brand_id);
       return brand && dObj && brand.division_id===dObj.id;
     });
+  }
+  const fBrandVal=document.getElementById('f-brand')?.value;
+  if(fBrandVal){
+    notes=notes.filter(n=>String(n.brand_id)===String(fBrandVal));
   }
   const fCatVal=document.getElementById('f-cat')?.value;
   if(fCatVal){
