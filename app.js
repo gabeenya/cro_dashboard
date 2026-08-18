@@ -1174,6 +1174,8 @@ function renderViolationTypeDonut(risks){
 // 종합등급: 영역별 등급을 A=10/B=8/C=5/D=3점으로 환산한 평균 점수로 산정.
 //   평균 9~10=A, 7~8=B, 5~6=C, 3~4=D, 3 미만=F
 const GRADE_POINT={A:10,B:8,C:5,D:3,F:0};
+// 유통-리테일 측정판에 순위를 매길 매장 13곳(그 외 매장은 제외)
+const RETAIL_MATRIX_STORES=['강남점','강서점','고잔점','대전유성점','동수원점','부천점','분당점','송파점','신구로점','야탑점','인천점','일산점','평촌점'];
 function scoreToOverallGrade(avg){
   if(avg>=9) return 'A';
   if(avg>=7) return 'B';
@@ -1198,7 +1200,7 @@ function renderMatrix(risks){
   if(isRetailStoreView()){
     // 유통 - 리테일 뷰: 브랜드 단위 대신 매장 단위로 측정판을 구성
     const distDivObj=allDiv.find(d=>d.name==='유통');
-    const stores=distDivObj?allStores.filter(s=>s.division_id===distDivObj.id):[];
+    const stores=distDivObj?allStores.filter(s=>s.division_id===distDivObj.id && RETAIL_MATRIX_STORES.includes(storeDisplayName(s.name))):[];
     entities=stores.map(s=>({id:s.id,name:storeDisplayName(s.name),store:true}));
     entityLabel='매장';
   } else if(scopeDivObj){
