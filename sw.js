@@ -1,4 +1,4 @@
-const CACHE='eland-cro-v57';
+const CACHE='eland-cro-v58';
 const STATIC=[
   './',
   './index.html',

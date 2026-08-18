@@ -500,10 +500,17 @@ function isBrandDetailView(){
   if(activeDiv==='유통' && brandObj?.name==='리테일') return false;
   return true;
 }
+// 유통 계열사에서 '리테일' 브랜드를 골라 보고 있는지 — true면 측정판을 매장별로 바꾸고
+// 감사 KPI 4장은 숨기되(그룹 전체 집계라 매장 단위와 안 맞음), 조치사항 판은 그대로 필터링해 보여준다.
+function isRetailStoreView(){
+  if(activeDiv!=='유통') return false;
+  const brandVal=document.getElementById('f-brand')?.value;
+  const brandObj=allBrands.find(b=>b.id==brandVal);
+  return brandObj?.name==='리테일';
+}
 function gradeTier(cnt){
-  if(cnt<=3) return 'A';
-  if(cnt<=6) return 'B';
-  if(cnt<=9) return 'C';
+  if(cnt<=0) return 'B';
+  if(cnt<=5) return 'C';
   return 'D';
 }
 // 측정판 기준월: 드롭다운에서 고른 달의 말일, 안 골랐으면 지금
@@ -866,7 +873,7 @@ function showGradeCriteriaModal(){
     <div class="mo-bd" style="font-size:12px;line-height:1.7;color:var(--text2)">
       <div class="note-box" style="background:#eff6ff;border-left:3px solid #2563eb;padding:8px 12px;border-radius:6px;margin-bottom:14px">건수 기준은 <b>월평균</b>입니다. 누적 모드에서는 (연초~기준일 총 건수) ÷ (경과 개월수)로, 지정월 모드에서는 그 달 건수 그대로 계산합니다 — 연말로 갈수록 총 건수만 늘어 등급이 무조건 나빠지는 걸 막기 위함입니다.</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">컴플라이언스 분류 — 불법파견·공정거래·영업비밀·IP</div>
-      <div style="margin-bottom:14px">위반(위반+완료 상태) 월평균 건수 기준 — <b>A</b> 3건 이하 · <b>B</b> 4~6건 · <b>C</b> 7~9건 · <b>D</b> 10건 이상. 단 <b>외부노출 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
+      <div style="margin-bottom:14px">위반(위반+완료 상태) 월평균 건수 기준 — <b>B</b> 0건 · <b>C</b> 1~5건 · <b>D</b> 5건 초과. 단 <b>외부노출 1건 이상</b>이면 건수와 무관하게 <b>F</b> (건수만으로는 <b>A</b>가 나오지 않음)</div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">중대재해</div>
       <div style="margin-bottom:14px">위반(위반+완료 상태) 월평균 건수 기준(위와 동일 구간). 단 <b>'중대재해 발생' 1건 이상</b>이면 건수와 무관하게 <b>F</b></div>
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">부실채권</div>
@@ -1188,7 +1195,13 @@ function renderMatrix(risks){
   const scopeDivObj=scopeSel&&scopeSel.value?allDiv.find(d=>d.id==scopeSel.value):null;
 
   let entities, entityLabel;
-  if(scopeDivObj){
+  if(isRetailStoreView()){
+    // 유통 - 리테일 뷰: 브랜드 단위 대신 매장 단위로 측정판을 구성
+    const distDivObj=allDiv.find(d=>d.name==='유통');
+    const stores=distDivObj?allStores.filter(s=>s.division_id===distDivObj.id):[];
+    entities=stores.map(s=>({id:s.id,name:storeDisplayName(s.name),store:true}));
+    entityLabel='매장';
+  } else if(scopeDivObj){
     entities=visibleBrands(allBrands.filter(b=>b.division_id===scopeDivObj.id)).map(b=>({id:b.id,name:b.name,brand:true}));
     entityLabel='브랜드';
   } else {
@@ -1208,7 +1221,7 @@ function renderMatrix(risks){
   const rowsData=entities.map(ent=>{
     const cells=cats.map(cat=>{
       const items=risks.filter(r=>{
-        const match=ent.brand ? r.brands?.id==ent.id : r.divisions?.id==ent.id;
+        const match=ent.store ? r.store_id==ent.id : (ent.brand ? r.brands?.id==ent.id : r.divisions?.id==ent.id);
         if(!match || r.risk_categories?.id!=cat.id) return false;
         if(!r.registered_at) return false;
         const d=new Date(r.registered_at);
@@ -1217,7 +1230,7 @@ function renderMatrix(risks){
       if(!items.length) return {grade:null,num:0,den:0};
       // 분수(위반/전체)는 누적 건수 그대로 표시. 등급 산정만 월평균 기준(아래 calcCategoryGrade)을 유지.
       const den=sumCnt(items), num=sumViol(items);
-      const grade = ent.brand ? calcCategoryGrade(cat.name, items, months) : (items[0].grade||null);
+      const grade = (ent.brand||ent.store) ? calcCategoryGrade(cat.name, items, months) : (items[0].grade||null);
       return {grade, num, den};
     });
     const validCells=cells.filter(c=>c.grade);
@@ -1234,6 +1247,8 @@ function renderMatrix(risks){
   // 데이터 없는 법인/브랜드는 맨 아래
   const sorted=[...rowsData].sort((a,b)=>(b.avgScore??-1)-(a.avgScore??-1) || a.fCount-b.fCount);
   const drillDivId=scopeDivObj?scopeDivObj.id:null;
+  const distDivId=allDiv.find(d=>d.name==='유통')?.id||null;
+  const retailBrandId=allBrands.find(b=>b.division_id===distDivId && b.name==='리테일')?.id||null;
 
   body.innerHTML=sorted.map((row,i)=>{
     const dim=!row.overall;
@@ -1241,8 +1256,8 @@ function renderMatrix(risks){
     const overallHtml=row.overall
       ?`<span class="cpill cpill-lg cp-${row.overall}">${row.overall}</span><br><span class="overall-score">${Math.round(row.avgScore*10)}점</span>`
       :`<span class="cp-none">—</span>`;
-    const rowDivId=row.ent.brand?drillDivId:row.ent.id;
-    const rowBrandId=row.ent.brand?row.ent.id:'';
+    const rowDivId=row.ent.store?distDivId:(row.ent.brand?drillDivId:row.ent.id);
+    const rowBrandId=row.ent.store?retailBrandId:(row.ent.brand?row.ent.id:'');
     const cellsHtml=row.cells.map((c,ci)=>{
       if(!c.grade) return `<td><span class="cp-none">—</span></td>`;
       return `<td><span class="cpill cp-${c.grade}" onclick="drillDown(${rowDivId},${cats[ci].id},${rowBrandId||'null'})">${c.grade}</span><br><span class="gc-frac"><span class="gc-num">${c.num}</span>/${c.den}</span></td>`;
@@ -1289,13 +1304,17 @@ let auditPage=1; const AUDIT_PER=5;
 function renderAuditKPI(risks){
   // 감사 KPI 4장 + 조치사항 판: 전체 영역(필터 없음)이거나 '감사'를 선택했을 때 노출.
   // 그 외 특정 영역(중대재해 등)을 선택했을 때만 숨김(관련없는 0만 보여 혼란을 주므로).
-  // 특정 브랜드/조직을 골라 보고 있을 때도(유통-리테일 제외) 숨김 — 그룹 전체 감사 판이라 브랜드 단위와 안 맞음.
+  // 특정 브랜드/조직을 골라 보고 있을 때는(유통-리테일 제외) 둘 다 숨김 — 그룹 전체 감사 판이라 브랜드 단위와 안 맞음.
   const selectedCat = allCats.find(c=>c.id==document.getElementById('f-cat')?.value);
-  const isAuditView = !isBrandDetailView() && (!selectedCat || selectedCat.name==='감사');
+  const isBrandView=isBrandDetailView();
+  const showAuditSection = !isBrandView && (!selectedCat || selectedCat.name==='감사');
+  // 유통-리테일 뷰에서는 조치사항 판(이미 risks가 매장까지 필터돼 들어옴)은 남기되,
+  // 감사 KPI 4장은 매장별 측정판으로 대체하는 화면이라 숨긴다.
+  const hideStatCards = isBrandView || isRetailStoreView();
   const auditHd=document.getElementById('audit-kpi-hd'), auditRow=document.getElementById('audit-kpi-row'), auditActionCard=document.getElementById('audit-action-card');
-  if(auditHd) auditHd.style.display=isAuditView?'':'none';
-  if(auditRow) auditRow.style.display=isAuditView?'':'none';
-  if(auditActionCard) auditActionCard.style.display=isAuditView?'':'none';
+  if(auditHd) auditHd.style.display=(showAuditSection && !hideStatCards)?'':'none';
+  if(auditRow) auditRow.style.display=(showAuditSection && !hideStatCards)?'':'none';
+  if(auditActionCard) auditActionCard.style.display=showAuditSection?'':'none';
 
   const mode=document.getElementById('audit-period-mode')?.value||'누적';
   const monthPick=document.getElementById('audit-month-pick');
