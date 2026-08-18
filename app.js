@@ -1655,43 +1655,27 @@ function startHighRotate(wrapId){
   },40);
 }
 
-// ── 계열사별 현황 (메인뷰) — 법인별 위반/모니터링 가로 막대그래프 ──
-let divBarChart=null;
+// ── 계열사별 현황 (메인뷰) — 법인별 모니터링/위반 리스트 ──
+// 막대 길이로 법인끼리 비교하면 유통처럼 모수가 큰 법인만 두드러지고 나머지가 안 보여서,
+// 법인별 한 줄씩 건수는 숫자로, 위반율만 자기 자신 기준(0~100%) 바로 표시하는 방식으로 대체.
 function renderDivisionBarChart(risks){
-  const canvas=document.getElementById('div-bar-chart');
-  if(!canvas) return;
+  const container=document.getElementById('div-bar-chart');
+  if(!container) return;
   const divs=allDiv.filter(d=>risks.some(r=>r.divisions?.id===d.id));
-  const labels=divs.map(d=>d.name);
-  const monData=divs.map(d=>sumCnt(risks.filter(r=>r.divisions?.id===d.id)));
-  const violData=divs.map(d=>sumViol(risks.filter(r=>r.divisions?.id===d.id)));
-  if(divBarChart) divBarChart.destroy();
-  if(!labels.length){
-    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
-    return;
-  }
-  divBarChart=new Chart(canvas,{
-    type:'bar',
-    data:{labels, datasets:[
-      {label:'모니터링(전체)', data:monData, backgroundColor:'#c7d2e0', borderRadius:3},
-      {label:'위반', data:violData, backgroundColor:'#c8102e', borderRadius:3}
-    ]},
-    options:{
-      indexAxis:'y',
-      responsive:true, maintainAspectRatio:false,
-      animation:{duration:900,easing:'easeOutQuart'},
-      plugins:{legend:{position:'top',labels:{font:{size:10},boxWidth:10,padding:10}}},
-      onClick:(evt,elements)=>{
-        if(!elements.length) return;
-        const d=divs[elements[0].index];
-        if(d) setDiv(d.name, document.getElementById('div-'+d.name));
-      },
-      onHover:(evt,elements)=>{ evt.native.target.style.cursor=elements.length?'pointer':'default'; },
-      scales:{
-        x:{beginAtZero:true,grid:{color:'#f1f2f5'},ticks:{font:{size:10},precision:0}},
-        y:{grid:{display:false},ticks:{font:{size:11}}}
-      }
-    }
-  });
+  container.innerHTML=divs.map(d=>{
+    const items=risks.filter(r=>r.divisions?.id===d.id);
+    const mon=sumCnt(items), viol=sumViol(items);
+    const rate=pctRateExact(viol,mon,2);
+    const pctNum=Math.min(100,parseFloat(rate));
+    // 0.01~0.02%처럼 실제 폭이 1px도 안 나오는 값은 막대가 안 보이므로 최소 3px는 보장
+    const fillWidth=pctNum>0?`max(${pctNum}%, 3px)`:'0';
+    return `<div class="divstat-row" onclick="setDiv('${d.name}',document.getElementById('div-${d.name}'))">
+      <span class="divstat-name">${d.name}</span>
+      <span class="divstat-nums">모니터링 <b>${mon.toLocaleString()}</b> · 위반 <b>${viol.toLocaleString()}</b></span>
+      <span class="divstat-track"><span class="divstat-fill" style="width:${fillWidth}"></span></span>
+      <span class="divstat-rate">${rate}%</span>
+    </div>`;
+  }).join('');
 }
 
 // ── 브랜드 카드 ────────────────────────────

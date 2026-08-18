@@ -427,6 +427,16 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .rate-bar-fill{height:100%;background:#059669;border-radius:2px;transition:width 0.4s}
 .rate-val{font-weight:700;color:#059669;font-size:10px;white-space:nowrap}
 
+.divstat-list{display:flex;flex-direction:column;gap:7px}
+.divstat-row{display:flex;align-items:center;gap:12px;padding:12px 10px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:border-color .15s,background .15s}
+.divstat-row:hover{border-color:var(--border2);background:var(--surface2)}
+.divstat-name{font-size:12px;font-weight:700;color:var(--text);width:56px;flex-shrink:0}
+.divstat-nums{font-size:11px;color:var(--text3);width:170px;flex-shrink:0}
+.divstat-nums b{color:var(--text);font-weight:700}
+.divstat-track{flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.divstat-fill{display:block;height:100%;background:var(--위험-c);border-radius:3px;transition:width .5s}
+.divstat-rate{font-size:11px;font-weight:700;color:var(--위험-c);min-width:34px;text-align:right;flex-shrink:0;white-space:nowrap}
+
 /* ════ 모달 ════ */
 .mo-ov{position:fixed;inset:0;background:rgba(17,24,39,0.55);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s}
 .mo-ov.open{opacity:1;pointer-events:all}
