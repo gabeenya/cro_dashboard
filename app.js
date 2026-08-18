@@ -116,13 +116,10 @@ function flatViolationTypes(catName){
 function rowCnt(r){
   const m=r.monitoring_count, v=r.violation_count;
   if(m==null && v==null) return 1;
-  // 영업비밀의 '모니터링' 건수 중 외식BG 연동분(source_id 있음)만 1/10 비율로 반영(위반/완료는 그대로, 직접 입력분은 그대로).
-  const isSyncedTradeSecret = r.risk_categories?.name==='영업비밀' && r.source_id;
   // 패션 법인의 IP·공정거래 '모니터링' 건수는 1/100 비율로 반영(위반/완료는 그대로).
   const isFashionScaled = r.divisions?.name==='패션' && (r.risk_categories?.name==='IP' || r.risk_categories?.name==='공정거래');
   let mEff = m||0;
-  if(isSyncedTradeSecret) mEff = Math.round(mEff/10);
-  else if(isFashionScaled) mEff = Math.round(mEff/100);
+  if(isFashionScaled) mEff = Math.round(mEff/100);
   return mEff+(v||0);
 }
 // 위반 건수: 위반계열(위반/발생/적발) 또는 완료계열(완료/해결/조치완료)일 때만 반영
@@ -867,7 +864,6 @@ function showGradeCriteriaModal(){
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
       <div style="margin-bottom:14px">법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점, F=0점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
       <div style="font-size:11px;color:var(--text3);border-top:1px solid var(--border);padding-top:10px">
-        * 외식 영업비밀 모니터링 건수(외식BG 연동분)는 1/10 비율로 환산해 반영됩니다.<br>
         * 패션 IP·공정거래 모니터링 건수는 1/100 비율로 환산해 반영됩니다.
       </div>
     </div>`;
