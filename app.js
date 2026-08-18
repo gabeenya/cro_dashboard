@@ -1791,6 +1791,30 @@ function getListRisks(){
     return true;
   });
 }
+function csvField(v){
+  const s=v==null?'':String(v);
+  return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function exportCSV(){
+  const risks=getListRisks();
+  if(!risks.length){ showToast('내려받을 데이터가 없습니다'); return; }
+  const header=['등록일','계열사','브랜드/조직','영역 대분류','영역 중분류','리스크명','상태','건수','조치사항','비고'];
+  const rows=risks.map(r=>[
+    fmtD(r.registered_at),
+    r.divisions?.name||'',
+    r.brands?.name||'',
+    r.risk_categories?.name||'',
+    r.risk_subcategories?.name||'',
+    r.title||'',
+    r.item_state||'',
+    rowCnt(r),
+    r.status||'',
+    r.note||''
+  ]);
+  const csv='﻿'+[header,...rows].map(row=>row.map(csvField).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  dlBlob(blob,`모니터링리스트_${new Date().toISOString().slice(0,10)}.csv`);
+}
 function renderList(){
   const risks=getListRisks();
   const total=risks.length;
