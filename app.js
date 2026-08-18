@@ -3449,7 +3449,7 @@ async function downloadPPT(){
   // ── 슬라이드 4~: 계열사별 브랜드/조직 순위 (계열사마다 1장) ──
   const RANK_C=RPT.RED;     // 순위 색 = 붉은색
   const VIOL_C=RPT.NAVY2;   // 위반건수 색 = 순위와 다르게(네이비)
-  const DIST_MINI=['글로벌','팜앤푸드','킴스']; // 유통: 순위 제외 + 하단 별도 순위 ('기타'는 노출 안 함)
+  const DIST_MINI=['의류','하이퍼']; // 유통: 순위 제외 + 하단 별도 순위 ('기타'는 노출 안 함)
 
   // 표준 순위표 (순위 빨강 / 위반건수 네이비)
   function rankTable(sl, data, nameHdr, top, bottom){
@@ -3511,8 +3511,8 @@ async function downloadPPT(){
       } else {
         sl.addText('(리테일 매장 데이터 없음)',{x:0.4,y:3.0,w:12.5,h:0.4,fontSize:11,color:RPT.TEXT3,italic:true,align:'center',fontFace:RPT.FONT});
       }
-      // 유통(2): 글로벌 · 팜앤푸드 · 킴스 순위 — 별도 한 장
-      const sl2=pptx.addSlide(); head(sl2,'유통 — 글로벌 · 팜앤푸드 · 킴스 순위','위반+완료 건수 많은 순');
+      // 유통(2): 의류 · 하이퍼 순위 — 별도 한 장
+      const sl2=pptx.addSlide(); head(sl2,'유통 — 의류 · 하이퍼 순위','위반+완료 건수 많은 순');
       const four=DIST_MINI.map(nm=>{
         const b=allBrands.find(x=>x.division_id===dv.id&&x.name===nm);
         const items=b?baseRisks.filter(r=>r.brands?.id===b.id):[];
