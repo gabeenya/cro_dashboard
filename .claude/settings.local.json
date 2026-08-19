@@ -87,7 +87,8 @@
       "Bash(grep -rn \"사용안내서\\\\|guide.html\" index.html app.js login.html)",
       "Bash(ls -la --time-style=full-iso 사용안내서.md guide.html)",
       "Bash(git log *)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(x\\) for x in d if x['division_id']==3]\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(x\\) for x in d if x['division_id']==3]\")",
+      "Bash(git *)"
     ]
   }
 }

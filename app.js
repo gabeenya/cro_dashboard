@@ -1198,7 +1198,7 @@ function renderMatrix(risks){
   if(isRetailStoreView()){
     // 유통 - 리테일 뷰: 브랜드 단위 대신 매장 단위로 측정판을 구성
     const distDivObj=allDiv.find(d=>d.name==='유통');
-    const stores=distDivObj?allStores.filter(s=>s.division_id===distDivObj.id):[];
+    const stores=distDivObj?allStores.filter(s=>s.division_id===distDivObj.id && !storeDisplayName(s.name).startsWith('포항')):[];
     entities=stores.map(s=>({id:s.id,name:storeDisplayName(s.name),store:true}));
     entityLabel='매장';
   } else if(scopeDivObj){
