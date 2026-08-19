@@ -2481,7 +2481,7 @@ async function downloadBulkTemplate(){
     const L=colToLetter(col);
     ref.getCell(`${L}1`).value='__매장__';
     if(stores.length){
-      stores.forEach((s,i)=>{ ref.getCell(`${L}${i+2}`).value=s.name; });
+      stores.forEach((s,i)=>{ ref.getCell(`${L}${i+2}`).value=storeDisplayName(s.name); });
       wb.definedNames.add(`_참조!$${L}$2:$${L}$${stores.length+1}`,'_stores');
     } else {
       wb.definedNames.add(blankRange,'_stores');
@@ -2657,7 +2657,7 @@ async function handleBulkUpload(ev){
       let storeObj=null;
       if(storeName){
         if(divObj?.name==='유통' && brandObj?.name==='리테일'){
-          storeObj=allStores.find(s=>s.division_id===divObj.id&&s.name===storeName);
+          storeObj=allStores.find(s=>s.division_id===divObj.id&&storeDisplayName(s.name)===storeName);
           if(!storeObj) errs.push(`매장 '${storeName}'을 찾을 수 없음`);
         } else {
           errs.push("매장은 계열사 '유통' + 브랜드 '리테일' 조합에서만 입력 가능");
