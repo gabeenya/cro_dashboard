@@ -6,6 +6,35 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true }
 });
 
+// ── 필요할 때만 불러오는 외부 라이브러리 ─────────────
+// 엑셀(exceljs)·PPT(pptxgenjs)·AI결과표시(marked)는 크기가 크고 특정 기능에서만 쓰이므로
+// 사이트를 열 때 받지 않고, 해당 버튼을 처음 누를 때 받아온다(첫 화면 속도 개선).
+// jsdelivr가 안 되면 unpkg에서 한 번 더 시도한다.
+const LAZY_LIBS={
+  exceljs:{ready:()=>window.ExcelJS, path:'exceljs@4.4.0/dist/exceljs.min.js',
+    integrity:'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz'},
+  pptxgenjs:{ready:()=>window.PptxGenJS||window.pptxgen, path:'pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+    integrity:'sha384-Cck14aA9cifjYolcnjebXRfWGkz5ltHMBiG4px/j8GS+xQcb7OhNQWZYyWjQ+UwQ'},
+  marked:{ready:()=>window.marked, path:'marked@12.0.2/marked.min.js',
+    integrity:'sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi'},
+};
+const lazyLibPromises={};
+function loadLib(name){
+  const lib=LAZY_LIBS[name];
+  if(lib.ready()) return Promise.resolve();
+  if(lazyLibPromises[name]) return lazyLibPromises[name];
+  const tryLoad=base=>new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=base+lib.path; s.integrity=lib.integrity; s.crossOrigin='anonymous';
+    s.onload=()=>lib.ready()?resolve():reject(); s.onerror=()=>{ s.remove(); reject(); };
+    document.head.appendChild(s);
+  });
+  lazyLibPromises[name]=tryLoad('https://cdn.jsdelivr.net/npm/')
+    .catch(()=>tryLoad('https://unpkg.com/'))
+    .catch(e=>{ delete lazyLibPromises[name]; throw e; }); // 실패하면 다음 클릭 때 다시 시도
+  return lazyLibPromises[name];
+}
+
 // ── 상태 ───────────────────────────────────
 let allDiv=[], allBrands=[], allCats=[], allSubs=[], allStores=[], allRisks=[];
 let activeDiv='', editId=null;
@@ -2150,6 +2179,8 @@ async function runAIAnalysis(){
       resEl.innerHTML = `<div class="ai-err"><b>분석 실패 (HTTP ${r.status})</b><br>${escapeHTML(err)}</div>`;
       return;
     }
+    // 결과(Markdown) 표시용 도구. 못 받아와도 줄바꿈만 살린 일반 텍스트로 표시됨
+    await loadLib('marked').catch(()=>{});
     // 스트리밍(SSE) 응답을 실시간으로 받아 화면에 흐르게 표시
     resEl.innerHTML = '<div class="ai-md"></div>';
     const mdEl = resEl.querySelector('.ai-md');
@@ -2364,7 +2395,10 @@ function buildActionStatus(actType, entries, other){
 }
 
 async function downloadBulkTemplate(){
-  if(!window.ExcelJS){ showToast('엑셀 라이브러리 로딩 중. 잠시 후 다시 시도해주세요.'); return; }
+  if(!window.ExcelJS){
+    showToast('엑셀 도구 준비 중...');
+    try{ await loadLib('exceljs'); }catch{ showToast('엑셀 라이브러리 로드 실패 — 새로고침 후 다시 시도해주세요.'); return; }
+  }
   if(!allDiv.length||!allBrands.length||!allCats.length){
     showToast('기준 데이터(계열사/브랜드/영역 대분류)가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.'); return;
   }
@@ -2567,7 +2601,10 @@ async function handleBulkUpload(ev){
   const file=ev.target.files[0];
   ev.target.value='';
   if(!file) return;
-  if(!window.ExcelJS){ showToast('엑셀 라이브러리 로딩 중. 잠시 후 다시 시도해주세요.'); return; }
+  if(!window.ExcelJS){
+    showToast('엑셀 도구 준비 중...');
+    try{ await loadLib('exceljs'); }catch{ showToast('엑셀 라이브러리 로드 실패 — 새로고침 후 다시 시도해주세요.'); return; }
+  }
 
   const resultDiv=document.getElementById('bulk-result');
   resultDiv.innerHTML='<div style="color:var(--text2);padding:8px 0">파일 읽는 중...</div>';
@@ -3217,6 +3254,10 @@ function rptMonthFilter(arr,y,m){
 const dash=v=>(v==null||v===0)?'-':v;
 
 async function downloadPPT(){
+  if(!(window.PptxGenJS||window.pptxgen)){
+    showToast('보고서 도구 준비 중...');
+    try{ await loadLib('pptxgenjs'); }catch{}
+  }
   const PptxLib = window.PptxGenJS || window.pptxgen || (typeof PptxGenJS!=='undefined'?PptxGenJS:null);
   if(!PptxLib){showToast('PPT 라이브러리 로드 실패 — 새로고침(Ctrl+Shift+R) 후 다시 시도해주세요');return;}
   if(!allRisks.length){showToast('데이터가 없어 보고서를 만들 수 없습니다');return;}
