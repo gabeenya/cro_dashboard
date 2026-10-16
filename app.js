@@ -383,7 +383,7 @@ async function loadAll(){
   }
   allRisks=all;
   // 등급 자동 계산 (DB 저장값 대신 규칙 기반 산정)
-  allRisks.forEach(r=>{ r.grade=computeGrade(r,allRisks); });
+  computeAllGrades(allRisks);
   document.getElementById('conn-status').textContent=`데이터 ${allRisks.length}건`;
   updateSidebarBadges();
   fillMonthFilter();
@@ -429,7 +429,7 @@ function buildSnapshot(){
   const subset=allRisks
     .filter(r=>r.registered_at && new Date(r.registered_at)<=cutoff)
     .map(r=>({...r}));
-  subset.forEach(r=>{ r.grade=computeGrade(r,subset,cutoff); });
+  computeAllGrades(subset,cutoff);
   snapshotRisks=subset;
 }
 // 선택 가능한 월 목록: 현재 달 → 데이터가 있는 가장 오래된 달까지 내림차순
@@ -571,9 +571,20 @@ function computeGrade(r,all,cutoff=getGradeCutoff()){
   });
   return calcCategoryGrade(catName, group, monthsSpan(start,cutoff));
 }
+// 목록 전체의 등급을 한 번에 매긴다. 등급은 "계열사×영역" 묶음 단위로 같으므로
+// 묶음마다 한 번만 계산하고 같은 묶음의 다른 건엔 결과를 재사용한다.
+// (예전엔 건마다 전체 데이터를 다시 훑어서, 데이터가 늘수록 화면이 크게 느려졌음)
+function computeAllGrades(list,cutoff=getGradeCutoff()){
+  const cache=new Map();
+  list.forEach(r=>{
+    const key=(r.divisions?.id)+'|'+(r.risk_categories?.id);
+    if(!cache.has(key)) cache.set(key,computeGrade(r,list,cutoff));
+    r.grade=cache.get(key);
+  });
+}
 // 등급 집계 기간(연누적/당월) 토글 변경 시 전체 재계산 후 다시 그림
 function recomputeGrades(){
-  allRisks.forEach(r=>{ r.grade=computeGrade(r,allRisks); });
+  computeAllGrades(allRisks);
   buildSnapshot();
   renderCurrentPage();
 }
