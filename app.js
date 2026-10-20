@@ -1049,13 +1049,20 @@ function animCount(id,target){
   const el=document.getElementById(id); if(!el) return;
   target=Math.round(target||0);
   const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+  const runId=(el._animRun||0)+1; el._animRun=runId; // 같은 칸에 이전 카운트업이 돌고 있으면 그건 멈춤
   if(reduce||_kpiAnimated||target<=0){ el.textContent=target; return; }
-  const dur=1800, start=performance.now();
-  (function tick(now){
-    const p=Math.max(0,Math.min((now-start)/dur,1));
+  // 시작 시각은 "실제로 화면에 처음 그려지는 프레임"에서 잡는다. (2026-10-20)
+  // 예전엔 함수 호출 시각을 시작으로 잡아서, 뒤이어 차트·측정판을 그리느라 화면이 멈춘 동안이나
+  // 다른 탭을 보고 있는 동안 1.8초가 먼저 흘러가 버려 숫자가 한 번에 '팟' 하고 떠 보였음.
+  const dur=1800; let start=null;
+  el.textContent=0;
+  requestAnimationFrame(function tick(now){
+    if(el._animRun!==runId) return;
+    if(start===null) start=now;
+    const p=Math.min((now-start)/dur,1);
     el.textContent=Math.round(target*(1-Math.pow(1-p,3))); // easeOutCubic
     if(p<1) requestAnimationFrame(tick); else el.textContent=target;
-  })(performance.now());
+  });
 }
 // 대시보드 KPI·알림 카드 진입 애니메이션을 다시 재생(추이·도넛 차트가 다시 그려지는 시점과 맞춤)
 function playDashAnims(){
