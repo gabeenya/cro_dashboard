@@ -142,11 +142,14 @@ function flatViolationTypes(catName){
 // 모든 '건수'는 데이터 입력에서 적은 건수를 기준으로 집계한다(행 1개=1건이 아니라 입력 건수만큼).
 // 저장 방식: 모니터링이면 monitoring_count에, 위반/완료면 violation_count에 입력 건수가 들어감(둘 중 하나만).
 // 과거에 건수를 안 적은 데이터(둘 다 null)는 1건으로 간주.
+const FASHION_SCALE_END = new Date('2026-10-19T15:00:00Z'); // = 2026-10-20 00:00 KST
 function rowCnt(r){
   const m=r.monitoring_count, v=r.violation_count;
   if(m==null && v==null) return 1;
   // 패션 법인의 IP·공정거래 '모니터링' 건수는 1/100 비율로 반영(위반/완료는 그대로).
-  const isFashionScaled = r.divisions?.name==='패션' && (r.risk_categories?.name==='IP' || r.risk_categories?.name==='공정거래');
+  // 단, 2026-10-20 00:00(KST) 이후 새로 입력된 데이터는 입력 건수 그대로 반영.
+  const isFashionScaled = r.divisions?.name==='패션' && (r.risk_categories?.name==='IP' || r.risk_categories?.name==='공정거래')
+    && !(r.created_at && new Date(r.created_at) >= FASHION_SCALE_END);
   let mEff = m||0;
   if(isFashionScaled) mEff = Math.round(mEff/100);
   return mEff+(v||0);
@@ -923,7 +926,7 @@ function showGradeCriteriaModal(){
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">종합등급(순위판 · 100점 만점)</div>
       <div style="margin-bottom:14px">법인(또는 브랜드)의 영역별 등급을 <b>A=10점, B=8점, C=5점, D=3점, F=0점</b>으로 환산한 평균 × 10 = 100점 만점 점수.<br>평균 9~10=<b>A</b> · 7~8=<b>B</b> · 5~6=<b>C</b> · 3~4=<b>D</b> · 3 미만=<b>F</b></div>
       <div style="font-size:11px;color:var(--text3);border-top:1px solid var(--border);padding-top:10px">
-        * 패션 IP·공정거래 모니터링 건수는 1/100 비율로 환산해 반영됩니다.
+        * 패션 IP·공정거래 모니터링 건수는 2026-10-20 이전 입력분만 1/100 비율로 환산해 반영됩니다(이후 입력분은 입력 건수 그대로).
       </div>
     </div>`;
   showAlertModal(html);
