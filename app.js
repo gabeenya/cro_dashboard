@@ -408,12 +408,16 @@ async function loadAll(){
       divisions(id,name),brands(id,name),
       risk_categories(id,name),risk_subcategories(id,name),
       stores(id,name)
-    `).order('created_at',{ascending:false}).range(from,from+PAGE_SIZE-1);
+    `).order('created_at',{ascending:false}).order('id',{ascending:true}).range(from,from+PAGE_SIZE-1);
     if(error){document.getElementById('conn-status').textContent='연결 오류';showToast('데이터 로드 실패');return;}
     all.push(...data);
     if(data.length<PAGE_SIZE) break; // 마지막 페이지(받은 게 페이지 크기보다 적으면 끝)
   }
-  allRisks=all;
+  // (2026-10-20) 엑셀 일괄등록처럼 created_at이 같은 행이 수백 건이면 정렬 순서가 요청마다 달라져
+  // 어떤 건은 두 번, 어떤 건은 아예 안 받아지는 문제가 있었음 → 위에서 id로 2차 정렬해 순서를 고정하고,
+  // 혹시 모를 중복은 id 기준으로 제거한다.
+  const seen=new Set();
+  allRisks=all.filter(r=>!seen.has(r.id) && seen.add(r.id));
   // 등급 자동 계산 (DB 저장값 대신 규칙 기반 산정)
   computeAllGrades(allRisks);
   document.getElementById('conn-status').textContent=`데이터 ${allRisks.length}건`;
